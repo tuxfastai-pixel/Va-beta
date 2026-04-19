@@ -1,0 +1,202 @@
+.page {.page {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.page {
+  min-height: 100vh;
+  padding: 30px;
+  color: #f4f5f7;
+  background:
+    radial-gradient(circle at 15% 10%, #2e3d5b 0%, transparent 42%),
+    radial-gradient(circle at 80% 18%, #3d2d24 0%, transparent 40%),
+    #131923;
+  font-family: var(--font-geist-sans);
+}
+
+.hero,
+.metricsGrid,
+.funnel,
+.actions {
+  width: min(1060px, 100%);
+  margin: 0 auto;
+}
+
+.hero {
+  border: 1px solid #3a4656;
+  border-radius: 18px;
+  background-color: rgb(13 18 26 / 78%);
+  padding: 26px;
+}
+
+.hero h1 {
+  font-size: clamp(30px, 5vw, 52px);
+  letter-spacing: -0.02em;
+}
+
+.hero p {
+  margin-top: 10px;
+  color: #bcc6d3;
+}
+
+.metricsGrid {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.metricsGrid article,
+.funnel,
+.actions {
+  border: 1px solid #3a4656;
+  border-radius: 16px;
+  background-color: rgb(15 21 30 / 76%);
+}
+
+.metricsGrid article {
+  padding: 16px;
+}
+
+.metricsGrid h2,
+.funnel h2,
+.actions h2 {
+  margin-bottom: 8px;
+  font-size: 18px;
+}
+
+.metric {
+  font-size: clamp(26px, 3.6vw, 44px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.funnel,
+.actions {
+  margin-top: 18px;
+  padding: 20px;
+}
+
+.funnel ul {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.funnel li {
+  border: 1px solid #334156;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.funnel li span,
+.rates,
+.actions p {
+  color: #bcc6d3;
+}
+
+.funnel li strong {
+  font-size: 24px;
+}
+
+.rates {
+  margin-top: 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.actionButtons {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.actionButtons a {
+  border: 1px solid #4f627d;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background-color: rgb(255 255 255 / 4%);
+  transition: background-color 0.2s ease;
+}
+
+.actionButtons a:hover {
+  background-color: rgb(255 255 255 / 12%);
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 14px;
+  }
+}
