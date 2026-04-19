@@ -1,0 +1,18 @@
+name: AI Orchestrator Cron
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  trigger-ai:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger AI Orchestrator
+        run: |
+          curl -X POST https://va-beta.vercel.app/api/run-orchestrator \
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+          -H "Content-Type: application/json" \
+          -d '{}'
