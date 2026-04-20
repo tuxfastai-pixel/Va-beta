@@ -12,7 +12,7 @@ jobs:
     steps:
       - name: Trigger AI Orchestrator
         run: |
-          curl -X POST https://va-beta.vercel.app/api/run-orchestrator \
+          curl -X POST https://va-beta-two.vercel.app/api/run-orchestrator \
           -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
           -H "Content-Type: application/json" \
           -d '{}'

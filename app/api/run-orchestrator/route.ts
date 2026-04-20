@@ -39,9 +39,7 @@ async function logError(error: unknown, user: NonNullable<RouteUser>) {
 export async function POST(req: Request) {
   try {
     const authHeader = req.headers.get("authorization");
-    const isExternalCall = authHeader?.startsWith("Bearer ");
-
-    if (isExternalCall && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 

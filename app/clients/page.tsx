@@ -1,8 +1,10 @@
 import { getWorkers } from "@/lib/db/workers";
 import { matchWorker } from "@/lib/agents/workerMatcher";
 
+export const dynamic = "force-dynamic";
+
 export default async function ClientsPage() {
-  const workers = await getWorkers();
+  const workers = await getWorkers().catch(() => []);
 
   const project = {
     title: "Virtual Assistant Support Project",
