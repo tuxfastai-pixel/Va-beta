@@ -1,7 +1,4 @@
-import Redis from "ioredis";
-import { config as loadEnv } from "dotenv";
-
-loadEnv({ path: ".env.local" });
+import { redis } from "@/lib/redis";
 
 type MemoryEntry = {
   value: string;
@@ -9,34 +6,6 @@ type MemoryEntry = {
 };
 
 const memoryStore = new Map<string, MemoryEntry>();
-
-let redis: Redis | null = null;
-
-function getRedis() {
-  if (redis) {
-    return redis;
-  }
-
-  const host = process.env.REDIS_HOST;
-
-  if (!host) {
-    return null;
-  }
-
-  redis = new Redis({
-    host,
-    port: Number(process.env.REDIS_PORT ?? 6379),
-    lazyConnect: true,
-    maxRetriesPerRequest: 1,
-    enableOfflineQueue: false,
-  });
-
-  redis.on("error", () => {
-    // Fallback to in-memory cache when Redis is unavailable.
-  });
-
-  return redis;
-}
 
 function getMemory(key: string) {
   const entry = memoryStore.get(key);
@@ -61,48 +30,28 @@ function setMemory(key: string, value: string, ttlSeconds: number) {
 }
 
 export async function getCache<T>(key: string): Promise<T | null> {
-  const redisClient = getRedis();
-
-  if (redisClient) {
+  if (redis) {
     try {
-      if (redisClient.status === "wait") {
-        await redisClient.connect();
-      }
-
-      const data = await redisClient.get(key);
-      if (!data) {
-        return null;
-      }
-
-      return JSON.parse(data) as T;
+      const data = await redis.get<string>(key);
+      if (data) return JSON.parse(data) as T;
     } catch {
-      const fallback = getMemory(key);
-      return fallback ? (JSON.parse(fallback) as T) : null;
+      // fall through to in-memory
     }
   }
-
   const fallback = getMemory(key);
   return fallback ? (JSON.parse(fallback) as T) : null;
 }
 
 export async function setCache<T>(key: string, value: T, ttlSeconds: number) {
   const serialized = JSON.stringify(value);
-  const redisClient = getRedis();
-
-  if (redisClient) {
+  if (redis) {
     try {
-      if (redisClient.status === "wait") {
-        await redisClient.connect();
-      }
-
-      await redisClient.set(key, serialized, "EX", ttlSeconds);
+      await redis.set(key, serialized, { ex: ttlSeconds });
       return;
     } catch {
-      setMemory(key, serialized, ttlSeconds);
-      return;
+      // fall through to in-memory
     }
   }
-
   setMemory(key, serialized, ttlSeconds);
 }
 
