@@ -8,7 +8,12 @@ import { autoApplicationAgent } from "../lib/agents/autoApplicationAgent.ts";
 
 loadEnv({ path: ".env.local" });
 
-const worker = new Worker(
+const redisHost = process.env.REDIS_HOST?.trim();
+
+if (!redisHost || redisHost.includes("127.0.0.1") || redisHost.includes("localhost")) {
+  console.log("⚠️  Redis disabled or localhost - agent worker will not start");
+} else {
+  const worker = new Worker(
   "career-tasks",
   async (job) => {
     switch (job.name) {
@@ -49,12 +54,13 @@ const worker = new Worker(
   }
 );
 
-worker.on("completed", (job) => {
-  console.log(`Job ${job.id} completed`);
-});
+  worker.on("completed", (job) => {
+    console.log(`Job ${job.id} completed`);
+  });
 
-worker.on("failed", (job, err) => {
-  console.error(`Job ${job?.id} failed:`, err);
-});
+  worker.on("failed", (job, err) => {
+    console.error(`Job ${job?.id} failed:`, err);
+  });
 
-console.log("AI agent worker running...");
+  console.log("AI agent worker running...");
+}

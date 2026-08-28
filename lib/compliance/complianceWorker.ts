@@ -1,11 +1,7 @@
-import OpenAI from "openai";
 import { config as loadEnv } from "dotenv";
+import { executeModelRequest, extractTextFromCompletion } from "@/lib/ai/executeModelRequest";
 
 loadEnv({ path: ".env.local" });
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 type CompliancePayload = {
   user_id?: string;
@@ -16,7 +12,7 @@ type CompliancePayload = {
 export async function runComplianceWorker(payload: CompliancePayload) {
   const documents = payload.documents || [];
 
-  const response = await openai.chat.completions.create({
+  const response = await executeModelRequest({
     model: "gpt-4.1-mini",
     messages: [
       {
@@ -29,9 +25,13 @@ export async function runComplianceWorker(payload: CompliancePayload) {
         content: `Country: ${payload.country || "Unknown"}\nDocuments: ${documents.join(", ")}\n\nReturn JSON with:\n- clean_ledger\n- vat_summary\n- tax_ready_report`,
       },
     ],
+    telemetry: {
+      module: "lib/compliance/complianceWorker.ts",
+      userId: payload.user_id || null,
+    },
   });
 
-  const content = response.choices[0].message.content || "{}";
+  const content = extractTextFromCompletion(response) || "{}";
 
   return {
     user_id: payload.user_id,

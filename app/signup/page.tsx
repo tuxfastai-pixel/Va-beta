@@ -47,8 +47,8 @@ export default function SignupPage() {
         return;
       }
 
-      // Redirect to client portal
-      router.push("/client-portal");
+      const payload = (await res.json().catch(() => ({}))) as { redirectTo?: string };
+      router.push(payload.redirectTo || "/onboarding");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
       setLoading(false);

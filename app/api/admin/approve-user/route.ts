@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { notifyUserApproved } from "@/lib/notifications/adminAlert";
+import { requireAdminRole } from "@/lib/auth/serverAuth";
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireAdminRole();
+    if ("response" in auth) return auth.response;
+
     const body = await req.json();
     const { email, adminNotes } = body;
 

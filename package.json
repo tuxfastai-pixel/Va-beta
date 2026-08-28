@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run build:stable",
+    "build:compile": "node --max-old-space-size=6144 ./node_modules/next/dist/bin/next build --turbo --experimental-build-mode compile",
+    "build:generate": "node --max-old-space-size=6144 ./node_modules/next/dist/bin/next build --turbo --experimental-build-mode generate",
+    "build:stable": "npm run build:compile && npm run build:generate",
     "start": "next start",
     "lint": "eslint",
     "mobile:start": "cd mobile ; npx expo start",
@@ -22,30 +25,72 @@
     "worker:loop": "ts-node workers/workerLoop.ts",
     "worker:ai": "ts-node workers/aiWorker.ts",
     "worker:orchestrator": "ts-node workers/orchestratorWorker.ts",
-    "worker:job-acceptance": "ts-node workers/jobAcceptanceWorker.ts"
+    "worker:job-acceptance": "ts-node workers/jobAcceptanceWorker.ts",
+    "test:notification-orchestration": "node --loader ts-node/esm --test tests/notification-orchestration/*.test.ts",
+    "test:equilibrium": "node --loader ts-node/esm --test tests/equilibrium/*.test.ts",
+    "test:governance": "node --loader ts-node/esm --test tests/governance/*.test.ts",
+    "test:admin": "node --loader ts-node/esm --test tests/admin/*.test.ts",
+    "test:continuity": "node --loader ts-node/esm --test tests/continuity/*.test.ts",
+    "test:continuity:activation": "node --loader ts-node/esm --test tests/continuity/post-wizard-activation.test.ts",
+    "test:trust": "node --loader ts-node/esm --test tests/trust/*.test.ts",
+    "test:autonomy": "node --loader ts-node/esm --test tests/autonomy/*.test.ts",
+    "test:constitutional": "node --loader ts-node/esm --test tests/governance/constitutional-simulation.test.ts",
+    "test:human-trust": "node --loader ts-node/esm --test tests/trust/human-trust-regression.test.ts",
+    "validate:deterministic": "node --loader ts-node/esm scripts/run-deterministic-validation.ts",
+    "validate:runtime-certification": "node --loader ts-node/esm scripts/run-runtime-certification-pass.ts",
+    "check:pilot-readiness": "node --loader ts-node/esm scripts/check-pilot-readiness.ts",
+    "smoke:persistence": "node --loader ts-node/esm scripts/run-persistence-smoke-test.ts",
+    "test:replay": "node --loader ts-node/esm --test tests/replay/*.test.ts",
+    "test:all": "tsx --import ./tests/setup.ts --test tests/**/*.test.ts",
+    "check:targeted": "npm run lint -- app/onboarding/page.tsx app/api/onboarding/complete/route.ts app/api/onboarding/state/route.ts app/api/onboarding/restart/route.ts app/api/career/cv-intake/route.ts app/api/career/cv-enhance/route.ts app/api/jobs/assess/route.ts app/api/jobs/prepare/route.ts lib/career/activationContinuity.ts lib/career/cvIntake.ts lib/career/jobAssessment.ts"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.15.0",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.98.0",
     "@upstash/redis": "^1.37.0",
-    "axios": "^1.14.0",
+    "axios": "1.18.0",
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.70.4",
     "currency.js": "^2.0.4",
     "dotenv": "^17.3.1",
+    "googleapis": "^171.4.0",
     "js-tiktoken": "^1.0.21",
     "jsonwebtoken": "^9.0.3",
-    "next": "16.1.6",
+    "next": "16.3.1",
     "node-cron": "^4.2.1",
     "node-fetch": "^3.3.2",
-    "nodemailer": "^8.0.3",
+    "nodemailer": "9.0.5",
     "openai": "^6.25.0",
     "playwright": "^1.58.2",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "stripe": "^20.4.1",
     "tiktoken": "^1.0.22"
+  },
+  "overrides": {
+    "axios": {
+      "form-data": "4.0.6"
+    },
+    "ws": "8.21.0",
+    "@eslint/eslintrc": {
+      "js-yaml": "4.3.1"
+    },
+    "minimatch@3.1.5": {
+      "brace-expansion": "1.1.18"
+    },
+    "minimatch@10.2.5": {
+      "brace-expansion": "5.0.9"
+    },
+    "bullmq": {
+      "uuid": "11.1.1"
+    },
+    "googleapis-common@8.0.1": {
+      "qs": "6.15.3"
+    },
+    "eslint-plugin-react-hooks@7.1.1": {
+      "@babel/core": "7.29.7"
+    }
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.10",
@@ -54,8 +99,9 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.1.6",
+    "eslint-config-next": "16.3.1",
     "ts-node": "^10.9.2",
+    "tsx": "^4.23.12",
     "typescript": "^5"
   }
 }

@@ -1,6 +1,6 @@
-import OpenAI from "openai";
 import { supabase } from "@/lib/supabase";
 import { enqueueEngineeringTask } from "@/lib/engineering/enqueueEngineeringTask";
+import { executeEmbeddingRequest } from "@/lib/ai/executeModelRequest";
 
 type JobMatchRow = {
   id: string;
@@ -25,10 +25,6 @@ type MemoryRow = {
 type SimilarityRow = {
   similarity?: number | null;
 };
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 export async function promoteQualifiedJobMatches(): Promise<number> {
   const { data: matches, error: matchError } = await supabase
@@ -132,9 +128,12 @@ export async function promoteQualifiedJobMatches(): Promise<number> {
 }
 
 async function createEmbedding(text: string): Promise<number[]> {
-  const response = await openai.embeddings.create({
+  const response = await executeEmbeddingRequest({
     model: "text-embedding-3-small",
     input: text,
+    telemetry: {
+      module: "lib/jobs/jobMatchPromoter.ts",
+    },
   });
 
   return response.data[0]?.embedding || [];

@@ -1,3 +1,5 @@
+import { choosePaymentMethod } from "@/lib/payments/paymentRouter";
+
 export type ClientProfile = {
   email?: string;
   country?: string;
@@ -5,7 +7,7 @@ export type ClientProfile = {
   budget?: number;
 };
 
-export type PaymentMethod = "paystack" | "paypal" | "bank";
+export type PaymentMethod = "paystack" | "paypal" | "bank" | "payfast" | "wise" | "eft";
 
 type GeneratePaymentLinkInput = {
   method: PaymentMethod;
@@ -19,6 +21,13 @@ type GeneratePaymentLinkInput = {
 
 export function selectPaymentMethod(client: ClientProfile): PaymentMethod {
   if (client.company_size === "enterprise") return "bank";
+
+  const preferred = choosePaymentMethod({ country: client.country });
+  const primary = String(preferred[0] || "").toLowerCase();
+
+  if (primary === "payfast") return "payfast";
+  if (primary === "wise") return "wise";
+  if (primary === "eft") return "eft";
 
   if (client.country && !client.country.toLowerCase().includes("south africa")) {
     return "paypal";
@@ -34,14 +43,21 @@ export async function generatePaymentLink({
   email,
   job_id,
   user_id,
-  origin,
 }: GeneratePaymentLinkInput): Promise<string> {
-  const baseOrigin = String(origin || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  const baseOrigin = String(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (!cronSecret) {
+    throw new Error("Payment-link authentication is not configured");
+  }
 
   if (method === "paystack") {
     const res = await fetch(`${baseOrigin}/api/payments/paystack`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${cronSecret}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         amount,
         currency,
@@ -72,6 +88,18 @@ export async function generatePaymentLink({
       email: String(email || ""),
     });
     return `${baseOrigin}/api/payments/paypal/create?${params.toString()}`;
+  }
+
+  if (method === "wise") {
+    return "WISE_TRANSFER_REQUIRED";
+  }
+
+  if (method === "payfast") {
+    return "PAYFAST_LINK_REQUIRED";
+  }
+
+  if (method === "eft") {
+    return "EFT_REQUIRED";
   }
 
   return "BANK_TRANSFER_REQUIRED";

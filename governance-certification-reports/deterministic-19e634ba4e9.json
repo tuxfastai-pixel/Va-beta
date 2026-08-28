@@ -1,0 +1,51 @@
+{
+  "id": "deterministic-19e634ba4e9",
+  "generatedAt": "2026-05-26T07:59:22.346Z",
+  "deterministic": {
+    "fixedNow": 1735689600000,
+    "seed": 20260524
+  },
+  "environment": {
+    "cwd": "C:\\Users\\kamog\\Desktop\\My Projects\\va-beta",
+    "runtimeIsolated": true,
+    "singleThread": true
+  },
+  "suites": [
+    {
+      "pattern": "tests/governance/*.test.ts",
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 1782390,
+      "command": "node --import ./scripts/deterministic-bootstrap.mjs --loader ts-node/esm --test --test-concurrency=1 tests/governance/*.test.ts"
+    },
+    {
+      "pattern": "tests/trust/*.test.ts",
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 43946,
+      "command": "node --import ./scripts/deterministic-bootstrap.mjs --loader ts-node/esm --test --test-concurrency=1 tests/trust/*.test.ts"
+    },
+    {
+      "pattern": "tests/replay/*.test.ts",
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 11807,
+      "command": "node --import ./scripts/deterministic-bootstrap.mjs --loader ts-node/esm --test --test-concurrency=1 tests/replay/*.test.ts"
+    },
+    {
+      "pattern": "tests/autonomy/*.test.ts",
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 51174,
+      "command": "node --import ./scripts/deterministic-bootstrap.mjs --loader ts-node/esm --test --test-concurrency=1 tests/autonomy/*.test.ts"
+    }
+  ],
+  "summary": {
+    "totalSuites": 4,
+    "passedSuites": 4,
+    "failedSuites": 0,
+    "totalDurationMs": 1889317,
+    "certified": true
+  },
+  "checksum": "d322c95cea0ae8860996bba7831aa61854da2019cc2133490576232b606a0d96"
+}

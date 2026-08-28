@@ -5,7 +5,12 @@ import { learningAgent } from "../lib/agents/learningAgent.ts";
 
 loadEnv({ path: ".env.local" });
 
-const tasksWorker = new Worker(
+const redisHost = process.env.REDIS_HOST?.trim();
+
+if (!redisHost || redisHost.includes("127.0.0.1") || redisHost.includes("localhost")) {
+  console.log("⚠️  Redis disabled or localhost - tasks worker will not start");
+} else {
+  const tasksWorker = new Worker(
   "ranking-tasks",
   async (job) => {
     if (job.name === "rank") {
@@ -31,12 +36,13 @@ const tasksWorker = new Worker(
   }
 );
 
-tasksWorker.on("completed", (job) => {
-  console.log(`Task worker job ${job.id} completed`);
-});
+  tasksWorker.on("completed", (job) => {
+    console.log(`Task worker job ${job.id} completed`);
+  });
 
-tasksWorker.on("failed", (job, err) => {
-  console.error(`Task worker job ${job?.id} failed`, err);
-});
+  tasksWorker.on("failed", (job, err) => {
+    console.error(`Task worker job ${job?.id} failed`, err);
+  });
 
-console.log("Tasks worker running...");
+  console.log("Tasks worker running...");
+}

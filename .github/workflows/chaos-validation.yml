@@ -1,0 +1,31 @@
+name: Chaos Validation
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate-resilience:
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: https://va-beta-two.vercel.app
+      MIN_RESILIENCE: "65"
+
+    steps:
+      - name: Run nightly chaos suite
+        run: |
+          curl -sS -X POST "${BASE_URL}/api/ops/chaos" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"mode":"nightly"}' > chaos-report.json
+
+      - name: Validate resilience score threshold
+        run: |
+          node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync('chaos-report.json','utf8')); const score=Number(data.resilienceScore||0); const min=Number(process.env.MIN_RESILIENCE||65); if (!data.success) { console.error('Chaos suite failed'); process.exit(1); } console.log('Resilience score:', score); if (score < min) { console.error('Resilience score below threshold:', min); process.exit(1); }"
+
+      - name: Print highest impact scenario
+        run: |
+          node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync('chaos-report.json','utf8')); console.log('Highest impact scenario:', data.highestImpactScenario || 'unknown');"

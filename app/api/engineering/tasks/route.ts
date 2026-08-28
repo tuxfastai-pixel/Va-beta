@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { requireAdminRole } from "@/lib/auth/serverAuth";
 
 type AgentType = "PLANNER" | "ENGINEER" | "REVIEWER" | "TESTER" | "OPTIMIZER";
 
@@ -79,6 +80,11 @@ function validatePatchSet(patches: unknown[]): boolean {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireAdminRole();
+
+  if ("response" in auth) {
+    return auth.response;
+  }
   const body = await request.json().catch(() => null);
 
   if (!body || typeof body !== "object") {

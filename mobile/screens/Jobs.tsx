@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { ActivityIndicator, Button, FlatList, StyleSheet, Text, View } from "react-native";
 import { autoApply, fetchJobs, type Job } from "../services/api";
 
@@ -8,7 +8,7 @@ type Props = {
 
 export default function JobsScreen({ userId }: Props) {
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
 
   async function loadJobs() {
@@ -34,7 +34,28 @@ export default function JobsScreen({ userId }: Props) {
   }
 
   useEffect(() => {
-    void loadJobs();
+    let cancelled = false;
+
+    void fetchJobs()
+      .then((data) => {
+        if (!cancelled) {
+          setJobs(Array.isArray(data) ? data : []);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setStatus(error instanceof Error ? error.message : "Failed to fetch jobs");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (

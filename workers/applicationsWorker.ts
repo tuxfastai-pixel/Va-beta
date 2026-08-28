@@ -10,7 +10,12 @@ async function applyForUser(userId: string, job: ApplicationJobPayload, resume: 
   await autoApplicationAgent(userId, job, resume, profile);
 }
 
-const applicationWorker = new Worker(
+const redisHost = process.env.REDIS_HOST?.trim();
+
+if (!redisHost || redisHost.includes("127.0.0.1") || redisHost.includes("localhost")) {
+  console.log("⚠️  Redis disabled or localhost - applications worker will not start");
+} else {
+  const applicationWorker = new Worker(
   "application-tasks",
   async (job) => {
     const { userId, job: userJob, resume = "", profile = "" } = job.data;
@@ -30,12 +35,13 @@ const applicationWorker = new Worker(
   }
 );
 
-applicationWorker.on("completed", (job) => {
-  console.log(`Application job ${job.id} completed`);
-});
+  applicationWorker.on("completed", (job) => {
+    console.log(`Application job ${job.id} completed`);
+  });
 
-applicationWorker.on("failed", (job, err) => {
-  console.error(`Application job ${job?.id} failed`, err);
-});
+  applicationWorker.on("failed", (job, err) => {
+    console.error(`Application job ${job?.id} failed`, err);
+  });
 
-console.log("Applications worker running...");
+  console.log("Applications worker running...");
+}

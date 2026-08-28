@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionUser } from "@/lib/auth/sessionUser";
 import { getUserMode, setUserMode, type AiMode } from "@/lib/mode/modeManager";
 
 export async function GET(req: NextRequest) {
+  const session = await getSessionUser();
+
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const userId = String(req.nextUrl.searchParams.get("userId") || "").trim();
   if (!userId) {
     return NextResponse.json({ error: "userId is required" }, { status: 400 });
+  }
+
+  if (userId !== session.userId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const mode = await getUserMode(userId);
@@ -13,12 +24,22 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await getSessionUser();
+
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await req.json();
     const userId = String(body?.userId || "").trim();
     const mode = String(body?.mode || "assist").trim() as AiMode;
 
     if (!userId) {
       return NextResponse.json({ error: "userId is required" }, { status: 400 });
+    }
+
+    if (userId !== session.userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     if (mode !== "assist" && mode !== "autonomous") {

@@ -1,4 +1,5 @@
 import type { UserState } from "./stateManager";
+import { getPlatformWeight } from "@/lib/platforms/platformRegistry";
 
 type JobLike = {
   id?: string | number | null;
@@ -12,6 +13,10 @@ type JobLike = {
   match_score?: number | null;
   quality_score?: number | null;
   scam_risk?: string | null;
+  platform?: string | null;
+  platformWeight?: number | null;
+  remote?: boolean | null;
+  type?: string | null;
 };
 
 type UserLike = {
@@ -55,6 +60,44 @@ function extractJobSkills(job: JobLike) {
   return keywords.filter((keyword) => text.includes(keyword));
 }
 
+const financeKeywords = [
+  "bookkeeping",
+  "vat",
+  "sars",
+  "audit",
+  "reconciliation",
+  "accounts",
+  "invoices",
+  "payroll",
+];
+
+function detectFinanceSignal(job: JobLike) {
+  const text = `${job.title || ""} ${job.description || ""}`.toLowerCase();
+  return financeKeywords.some((keyword) => text.includes(keyword));
+}
+
+function getPriorityBoost(job: JobLike) {
+  const text = `${job.title || ""} ${job.description || ""}`.toLowerCase();
+
+  if ((job.remote === true || text.includes("remote")) && (String(job.type || "").toLowerCase() === "long_term" || text.includes("long-term") || text.includes("ongoing"))) {
+    return 20;
+  }
+
+  if (text.includes("client communication") || text.includes("customer support") || text.includes("follow-up")) {
+    return 14;
+  }
+
+  if (text.includes("admin") || text.includes("assistant") || text.includes("virtual assistant")) {
+    return 10;
+  }
+
+  if (text.includes("data entry")) {
+    return 4;
+  }
+
+  return 0;
+}
+
 export function isAIExecutable(job: JobLike) {
   const text = `${job.title || ""} ${job.description || ""}`.toLowerCase();
   const aiFriendlyKeywords = [
@@ -83,6 +126,8 @@ export function isAIExecutable(job: JobLike) {
 export function scoreJob(job: JobLike, user: UserLike) {
   const budget = Number(job.budget ?? job.pay_amount ?? 0);
   const proposals = Number(job.proposals ?? job.proposal_count ?? 0);
+  const text = `${job.title || ""} ${job.description || ""}`.toLowerCase();
+  const platformWeight = Number(job.platformWeight ?? getPlatformWeight(job.platform));
 
   if (proposals > 15) return 0;
   if (budget < 20) return 0;
@@ -97,8 +142,20 @@ export function scoreJob(job: JobLike, user: UserLike) {
   }
 
   if (budget > 100) score += 20;
+  if (budget > 300) score += 10;
   if (proposals < 10) score += 25;
   if (isAIExecutable(job)) score += 25;
+  if (job.remote === true || text.includes("remote")) score += 12;
+  if (String(job.type || "").toLowerCase() === "long_term" || text.includes("long-term") || text.includes("ongoing")) score += 10;
+  score += Math.round(platformWeight * 8);
+  score += getPriorityBoost(job);
+
+  if (text.includes("admin")) score += 8;
+  if (text.includes("virtual assistant")) score += 10;
+
+  if (detectFinanceSignal(job)) {
+    score += 18;
+  }
 
   if ((job.match_score ?? 0) >= 70) score += 10;
   if (String(job.scam_risk || "low").toLowerCase() === "low") score += 10;

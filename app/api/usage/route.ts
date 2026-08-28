@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { getSessionUser } from "@/lib/auth/sessionUser";
 import { createClient } from "@supabase/supabase-js"
 
 const supabase = createClient(
@@ -7,7 +8,15 @@ const supabase = createClient(
 )
 
 export async function POST(req: Request) {
+  const session = await getSessionUser();
+
+  if (!session?.userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const { userId } = await req.json()
+  if (!userId || userId !== session.userId) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const { data } = await supabase
     .from("monthly_usage")

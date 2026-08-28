@@ -1,13 +1,9 @@
-import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 import { config as loadEnv } from "dotenv";
 import { generateWinningProposal, highConversionProposal, suggestProposalTone } from "@/lib/jobs/winningProposal";
+import { executeModelRequest, extractTextFromCompletion } from "@/lib/ai/executeModelRequest";
 
 loadEnv({ path: ".env.local" });
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -82,7 +78,7 @@ export async function generateProposal(job: JobInput, user: UserInput) {
   const skillsText = Array.isArray(user.skills) ? user.skills.join(", ") : String(user.skills || "");
   const seedProposal = await generateWinningProposal(job, user, suggestProposalTone(job));
 
-  const response = await openai.chat.completions.create({
+  const response = await executeModelRequest({
     model: "gpt-4.1-mini",
     messages: [
       {
@@ -118,9 +114,14 @@ ${seedProposal}
 `,
       },
     ],
+    telemetry: {
+      module: "lib/agents/applicationAgent.ts",
+      userId: user.id,
+      jobId: job.id,
+    },
   });
 
-  const proposal = response.choices[0].message.content?.trim() || seedProposal;
+  const proposal = extractTextFromCompletion(response) || seedProposal;
 
   await supabase
     .from("job_applications")

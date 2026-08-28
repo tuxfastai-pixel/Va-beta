@@ -38,7 +38,24 @@ async function getCrawlerLastRun() {
     .maybeSingle();
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const expectedSecret = process.env.CRON_SECRET;
+
+  if (!expectedSecret) {
+    return Response.json(
+      { error: "System-health authentication is not configured" },
+      { status: 503 }
+    );
+  }
+
+  const authorization = request.headers.get("authorization");
+
+  if (authorization !== `Bearer ${expectedSecret}`) {
+    return Response.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
   const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 
   const [pendingTasksRes, inProgressTasksRes, workerRunsRes, crawlerTaskRes] =
