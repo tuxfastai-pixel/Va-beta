@@ -12,6 +12,13 @@ create table if not exists public.worker_tasks (
   updated_at timestamptz not null default now()
 );
 
+alter table if exists public.worker_tasks
+  add column if not exists type text,
+  add column if not exists status text default 'pending',
+  add column if not exists priority integer default 0,
+  add column if not exists scheduled_at timestamptz default now(),
+  add column if not exists created_at timestamptz default now();
+
 create index if not exists idx_worker_tasks_status_sched_priority
   on public.worker_tasks (status, scheduled_at, priority desc, created_at asc);
 

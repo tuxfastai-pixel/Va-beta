@@ -1,22 +1,25 @@
 -- Access Control System Migration
 -- Adds approval-based access gating and request tracking
 
-DO $$
-BEGIN
-  -- Add access_status to users table
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns 
-    WHERE table_name = 'users' AND column_name = 'access_status'
-  ) THEN
-    ALTER TABLE public.users 
-    ADD COLUMN access_status text DEFAULT 'pending';
-    
-    -- Add constraint for valid status values
-    ALTER TABLE public.users 
-    ADD CONSTRAINT users_access_status_check 
-    CHECK (access_status IN ('pending', 'approved', 'rejected'));
-  END IF;
-END $$;
+do $$
+begin
+  if to_regclass('public.users') is not null then
+    alter table public.users
+      add column if not exists access_status text default 'pending';
+
+    if not exists (
+      select 1
+      from pg_constraint
+      where conname = 'users_access_status_check'
+        and conrelid = to_regclass('public.users')
+    ) then
+      alter table public.users
+        add constraint users_access_status_check
+        check (access_status in ('pending', 'approved', 'rejected'));
+    end if;
+  end if;
+end
+$$;
 
 -- Create access_requests table for tracking user access requests
 CREATE TABLE IF NOT EXISTS public.access_requests (
@@ -53,3 +56,6 @@ CREATE TABLE IF NOT EXISTS public.admin_notifications (
 
 CREATE INDEX IF NOT EXISTS idx_admin_notifications_type ON public.admin_notifications(type);
 CREATE INDEX IF NOT EXISTS idx_admin_notifications_created_at ON public.admin_notifications(created_at DESC);
+-- Server-only RLS boundaries.
+alter table public.access_requests enable row level security;
+alter table public.admin_notifications enable row level security;

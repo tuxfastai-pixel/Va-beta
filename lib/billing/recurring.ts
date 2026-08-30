@@ -1,5 +1,5 @@
 import { supabaseServer } from "@/lib/supabaseServer";
-import { createInvoice } from "@/lib/invoices/generator";
+
 
 export type BillingInterval = "weekly" | "monthly" | "quarterly" | "yearly";
 
@@ -160,15 +160,19 @@ export async function processRecurringBilling(): Promise<{
         const interval = sub.interval || "monthly";
         const dueDate = calculateNextBillingDate(now, interval);
 
-        // Create invoice
-        const invoice = await createInvoice(
-          sub.client_id, // Using client_id as placeholder for deal_id
-          sub.amount,
-          dueDate,
-          `Recurring billing - ${interval}`
-        );
+        const { error: invoiceError } = await supabaseServer
+          .from("invoices")
+          .insert({
+            client_id: sub.client_id,
+            amount: sub.amount,
+            description: `Recurring billing - ${interval}`,
+            status: "pending",
+            due_date: dueDate.toISOString(),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
 
-        if (invoice) {
+        if (!invoiceError) {
           invoicesCreated++;
 
           // Update subscription's next billing date

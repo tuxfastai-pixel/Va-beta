@@ -190,6 +190,7 @@ export async function POST(request: Request) {
     .insert({
       title: payload.title,
       company: payload.company,
+      client_id: clientId,
       description: payload.description,
       recommendation: payload.recommendation,
       pay_amount: payload.pay_amount,

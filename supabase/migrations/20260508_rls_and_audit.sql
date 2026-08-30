@@ -1,244 +1,176 @@
--- ============================================================
--- PHASE 7: ROW LEVEL SECURITY + AUDIT LOGGING
--- ============================================================
+-- Server-only RLS boundary for CRM, billing, audit and operational data.
+--
+-- The application accesses these tables through authenticated server routes
+-- using the Supabase service role. The service role bypasses RLS.
+--
+-- No anon/authenticated policies are created here because the affected CRM
+-- tables do not yet contain a reliable per-user ownership key. This prevents
+-- one authenticated user from reading another user's clients, deals or billing
+-- records.
 
--- Enable RLS on all CRM + billing tables
-ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
-ALTER TABLE deals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE activities ENABLE ROW LEVEL SECURITY;
-ALTER TABLE contracts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
-ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE auto_applications ENABLE ROW LEVEL SECURITY;
-ALTER TABLE escalations ENABLE ROW LEVEL SECURITY;
+alter table public.clients enable row level security;
+alter table public.deals enable row level security;
+alter table public.activities enable row level security;
+alter table public.contracts enable row level security;
+alter table public.invoices enable row level security;
+alter table public.subscriptions enable row level security;
+alter table public.auto_applications enable row level security;
+alter table public.escalations enable row level security;
 
--- ============================================================
--- RLS POLICIES: Service role bypasses all (for server-side ops)
--- ============================================================
-
--- CLIENTS: Users see only their own clients
-CREATE POLICY "service_role_clients" ON clients
-  FOR ALL USING (auth.role() = 'service_role');
-
-CREATE POLICY "owner_read_clients" ON clients
-  FOR SELECT USING (auth.uid() IS NOT NULL);
-
-CREATE POLICY "owner_insert_clients" ON clients
-  FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
-
-CREATE POLICY "owner_update_clients" ON clients
-  FOR UPDATE USING (auth.uid() IS NOT NULL);
-
--- DEALS: Authenticated users only
-CREATE POLICY "service_role_deals" ON deals
-  FOR ALL USING (auth.role() = 'service_role');
-
-CREATE POLICY "owner_read_deals" ON deals
-  FOR SELECT USING (auth.uid() IS NOT NULL);
-
-CREATE POLICY "owner_insert_deals" ON deals
-  FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
-
-CREATE POLICY "owner_update_deals" ON deals
-  FOR UPDATE USING (auth.uid() IS NOT NULL);
-
--- CONTRACTS: Authenticated users only
-CREATE POLICY "service_role_contracts" ON contracts
-  FOR ALL USING (auth.role() = 'service_role');
-
-CREATE POLICY "owner_read_contracts" ON contracts
-  FOR SELECT USING (auth.uid() IS NOT NULL);
-
--- INVOICES: Authenticated users only
-CREATE POLICY "service_role_invoices" ON invoices
-  FOR ALL USING (auth.role() = 'service_role');
-
-CREATE POLICY "owner_read_invoices" ON invoices
-  FOR SELECT USING (auth.uid() IS NOT NULL);
-
--- SUBSCRIPTIONS: Authenticated users only
-CREATE POLICY "service_role_subscriptions" ON subscriptions
-  FOR ALL USING (auth.role() = 'service_role');
-
--- AUTO_APPLICATIONS: Service role only (internal)
-CREATE POLICY "service_role_auto_applications" ON auto_applications
-  FOR ALL USING (auth.role() = 'service_role');
-
--- ESCALATIONS: Service role only (internal)
-CREATE POLICY "service_role_escalations" ON escalations
-  FOR ALL USING (auth.role() = 'service_role');
-
--- ============================================================
--- AUDIT LOG TABLE (Immutable)
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS audit_logs (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  event_type   TEXT NOT NULL,      -- "contract_signed", "invoice_paid", "auto_apply", etc.
-  entity_type  TEXT NOT NULL,      -- "contract", "invoice", "deal", "application"
-  entity_id    TEXT,               -- ID of the entity
-  actor        TEXT,               -- "system", "user:uuid", "client:name"
-  ip_address   TEXT,               -- IP if applicable
-  payload      JSONB DEFAULT '{}', -- Full event data (immutable snapshot)
-  created_at   TIMESTAMPTZ DEFAULT NOW()
+create table if not exists public.audit_logs (
+  id uuid primary key default gen_random_uuid(),
+  event_type text not null,
+  entity_type text not null,
+  entity_id text,
+  actor text,
+  ip_address text,
+  payload jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
 );
 
--- Immutable: no UPDATE or DELETE allowed
-ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+alter table public.audit_logs enable row level security;
 
-CREATE POLICY "service_role_audit_insert" ON audit_logs
-  FOR INSERT WITH CHECK (auth.role() = 'service_role');
+create index if not exists idx_audit_event_type
+  on public.audit_logs (event_type);
 
-CREATE POLICY "service_role_audit_select" ON audit_logs
-  FOR SELECT USING (auth.role() = 'service_role');
+create index if not exists idx_audit_entity
+  on public.audit_logs (entity_type, entity_id);
 
--- No UPDATE or DELETE policies = immutable
+create index if not exists idx_audit_created
+  on public.audit_logs (created_at);
 
--- Index for fast event queries
-CREATE INDEX IF NOT EXISTS idx_audit_event_type  ON audit_logs(event_type);
-CREATE INDEX IF NOT EXISTS idx_audit_entity      ON audit_logs(entity_type, entity_id);
-CREATE INDEX IF NOT EXISTS idx_audit_created     ON audit_logs(created_at);
-
--- ============================================================
--- RATE LIMITING TABLE
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS rate_limit_buckets (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  key         TEXT NOT NULL UNIQUE,   -- "ip:1.2.3.4" or "user:uuid" or "endpoint:/api/x"
-  count       INTEGER DEFAULT 0,
-  window_end  TIMESTAMPTZ NOT NULL,
-  created_at  TIMESTAMPTZ DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ DEFAULT NOW()
+create table if not exists public.rate_limit_buckets (
+  id uuid primary key default gen_random_uuid(),
+  key text not null unique,
+  count integer default 0,
+  window_end timestamptz not null,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_rate_limit_key         ON rate_limit_buckets(key);
-CREATE INDEX IF NOT EXISTS idx_rate_limit_window_end  ON rate_limit_buckets(window_end);
+alter table public.rate_limit_buckets enable row level security;
 
-ALTER TABLE rate_limit_buckets ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "service_role_rate_limit" ON rate_limit_buckets
-  FOR ALL USING (auth.role() = 'service_role');
+create index if not exists idx_rate_limit_key
+  on public.rate_limit_buckets (key);
 
--- ============================================================
--- WEBHOOK EVENTS TABLE
--- ============================================================
+create index if not exists idx_rate_limit_window_end
+  on public.rate_limit_buckets (window_end);
 
-CREATE TABLE IF NOT EXISTS webhook_events (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  source        TEXT NOT NULL,         -- "payfast", "wise", "stripe"
-  event_type    TEXT NOT NULL,         -- "payment.completed", "payment.failed"
-  payload       JSONB NOT NULL,
-  signature     TEXT,                  -- Raw signature header for verification
-  verified      BOOLEAN DEFAULT FALSE,
-  processed     BOOLEAN DEFAULT FALSE,
-  processed_at  TIMESTAMPTZ,
-  created_at    TIMESTAMPTZ DEFAULT NOW()
+create table if not exists public.webhook_events (
+  id uuid primary key default gen_random_uuid(),
+  source text not null,
+  event_type text not null,
+  payload jsonb not null,
+  signature text,
+  verified boolean default false,
+  processed boolean default false,
+  processed_at timestamptz,
+  created_at timestamptz default now()
 );
 
-ALTER TABLE webhook_events ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "service_role_webhooks" ON webhook_events
-  FOR ALL USING (auth.role() = 'service_role');
+alter table public.webhook_events enable row level security;
 
-CREATE INDEX IF NOT EXISTS idx_webhook_source    ON webhook_events(source);
-CREATE INDEX IF NOT EXISTS idx_webhook_processed ON webhook_events(processed);
-CREATE INDEX IF NOT EXISTS idx_webhook_created   ON webhook_events(created_at);
+create index if not exists idx_webhook_source
+  on public.webhook_events (source);
 
--- ============================================================
--- REVENUE ANALYTICS TABLE (for Phase 7 Revenue Engine)
--- ============================================================
+create index if not exists idx_webhook_processed
+  on public.webhook_events (processed);
 
-CREATE TABLE IF NOT EXISTS revenue_analytics (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  period_date     DATE NOT NULL,             -- YYYY-MM-DD
-  platform        TEXT,                      -- "indeed", "linkedin", etc.
-  role_type       TEXT,                      -- "admin", "finance", "sales"
-  client_category TEXT,                      -- "startup", "enterprise", "gov"
-  region          TEXT,                      -- "ZA", "US", "UK"
-  gross_revenue   NUMERIC DEFAULT 0,
-  deals_closed    INTEGER DEFAULT 0,
-  proposals_sent  INTEGER DEFAULT 0,
-  close_rate      NUMERIC DEFAULT 0,        -- closed / sent
-  avg_response_ms BIGINT DEFAULT 0,         -- avg time to respond to leads
-  created_at      TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE (period_date, platform, role_type, region)
+create index if not exists idx_webhook_created
+  on public.webhook_events (created_at);
+
+create table if not exists public.revenue_analytics (
+  id uuid primary key default gen_random_uuid(),
+  period_date date not null,
+  platform text,
+  role_type text,
+  client_category text,
+  region text,
+  gross_revenue numeric default 0,
+  deals_closed integer default 0,
+  proposals_sent integer default 0,
+  close_rate numeric default 0,
+  avg_response_ms bigint default 0,
+  created_at timestamptz default now(),
+  unique (period_date, platform, role_type, region)
 );
 
-ALTER TABLE revenue_analytics ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "service_role_revenue_analytics" ON revenue_analytics
-  FOR ALL USING (auth.role() = 'service_role');
+alter table public.revenue_analytics enable row level security;
 
-CREATE INDEX IF NOT EXISTS idx_revenue_period    ON revenue_analytics(period_date);
-CREATE INDEX IF NOT EXISTS idx_revenue_platform  ON revenue_analytics(platform);
-CREATE INDEX IF NOT EXISTS idx_revenue_role_type ON revenue_analytics(role_type);
-CREATE INDEX IF NOT EXISTS idx_revenue_region    ON revenue_analytics(region);
+create index if not exists idx_revenue_period
+  on public.revenue_analytics (period_date);
 
--- ============================================================
--- AGENT ACTIVITY TABLE (for AI Workforce Layer)
--- ============================================================
+create index if not exists idx_revenue_platform
+  on public.revenue_analytics (platform);
 
-CREATE TABLE IF NOT EXISTS agent_activities (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  agent_name  TEXT NOT NULL,           -- "LeadHunterAgent", "ProposalAgent", etc.
-  action      TEXT NOT NULL,           -- "lead_found", "proposal_sent", etc.
-  outcome     TEXT,                    -- "success", "failure", "partial"
-  kpi_delta   NUMERIC DEFAULT 0,       -- +/- change in KPI value
-  payload     JSONB DEFAULT '{}',
-  created_at  TIMESTAMPTZ DEFAULT NOW()
+create index if not exists idx_revenue_role_type
+  on public.revenue_analytics (role_type);
+
+create index if not exists idx_revenue_region
+  on public.revenue_analytics (region);
+
+create table if not exists public.agent_activities (
+  id uuid primary key default gen_random_uuid(),
+  agent_name text not null,
+  action text not null,
+  outcome text,
+  kpi_delta numeric default 0,
+  payload jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
 );
 
-ALTER TABLE agent_activities ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "service_role_agent_activities" ON agent_activities
-  FOR ALL USING (auth.role() = 'service_role');
+alter table public.agent_activities enable row level security;
 
-CREATE INDEX IF NOT EXISTS idx_agent_name    ON agent_activities(agent_name);
-CREATE INDEX IF NOT EXISTS idx_agent_action  ON agent_activities(action);
-CREATE INDEX IF NOT EXISTS idx_agent_created ON agent_activities(created_at);
+create index if not exists idx_agent_name
+  on public.agent_activities (agent_name);
 
--- ============================================================
--- LEAD QUALIFICATION TABLE
--- ============================================================
+create index if not exists idx_agent_action
+  on public.agent_activities (action);
 
-CREATE TABLE IF NOT EXISTS lead_scores (
-  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  lead_id          TEXT NOT NULL,
-  budget_verified  BOOLEAN DEFAULT FALSE,
-  trust_score      NUMERIC DEFAULT 0,     -- 0-10
-  risk_score       NUMERIC DEFAULT 0,     -- 0-10 (higher = riskier)
-  qualification    TEXT DEFAULT 'unqualified', -- "unqualified", "warm", "hot", "disqualified"
-  disqualify_reason TEXT,
-  deposit_required BOOLEAN DEFAULT FALSE,
-  flags            TEXT[] DEFAULT '{}',
-  created_at       TIMESTAMPTZ DEFAULT NOW(),
-  updated_at       TIMESTAMPTZ DEFAULT NOW()
+create index if not exists idx_agent_created
+  on public.agent_activities (created_at);
+
+create table if not exists public.lead_scores (
+  id uuid primary key default gen_random_uuid(),
+  lead_id text not null,
+  budget_verified boolean default false,
+  trust_score numeric default 0,
+  risk_score numeric default 0,
+  qualification text default 'unqualified',
+  disqualify_reason text,
+  deposit_required boolean default false,
+  flags text[] default '{}',
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
 );
 
-ALTER TABLE lead_scores ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "service_role_lead_scores" ON lead_scores
-  FOR ALL USING (auth.role() = 'service_role');
+alter table public.lead_scores enable row level security;
 
-CREATE INDEX IF NOT EXISTS idx_lead_scores_lead   ON lead_scores(lead_id);
-CREATE INDEX IF NOT EXISTS idx_lead_qualification ON lead_scores(qualification);
+create index if not exists idx_lead_scores_lead
+  on public.lead_scores (lead_id);
 
--- ============================================================
--- SLA TRACKING TABLE
--- ============================================================
+create index if not exists idx_lead_qualification
+  on public.lead_scores (qualification);
 
-CREATE TABLE IF NOT EXISTS sla_records (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  deal_id      UUID REFERENCES deals(id),
-  milestone    TEXT NOT NULL,            -- "delivery_week_1", "final_delivery", etc.
-  due_date     DATE NOT NULL,
-  delivered_at TIMESTAMPTZ,
-  status       TEXT DEFAULT 'pending',   -- "pending", "delivered", "overdue", "disputed"
-  notes        TEXT,
-  created_at   TIMESTAMPTZ DEFAULT NOW(),
-  updated_at   TIMESTAMPTZ DEFAULT NOW()
+create table if not exists public.sla_records (
+  id uuid primary key default gen_random_uuid(),
+  deal_id uuid references public.deals(id),
+  milestone text not null,
+  due_date date not null,
+  delivered_at timestamptz,
+  status text default 'pending',
+  notes text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
 );
 
-ALTER TABLE sla_records ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "service_role_sla_records" ON sla_records
-  FOR ALL USING (auth.role() = 'service_role');
+alter table public.sla_records enable row level security;
 
-CREATE INDEX IF NOT EXISTS idx_sla_deal   ON sla_records(deal_id);
-CREATE INDEX IF NOT EXISTS idx_sla_status ON sla_records(status);
-CREATE INDEX IF NOT EXISTS idx_sla_due    ON sla_records(due_date);
+create index if not exists idx_sla_deal
+  on public.sla_records (deal_id);
+
+create index if not exists idx_sla_status
+  on public.sla_records (status);
+
+create index if not exists idx_sla_due
+  on public.sla_records (due_date);

@@ -12,3 +12,5 @@ create index if not exists idx_career_profiles_user_id
 
 create index if not exists idx_career_profiles_created_at
   on public.career_profiles (created_at desc);
+-- Server-only RLS boundary.
+alter table public.career_profiles enable row level security;

@@ -1,21 +1,33 @@
-alter table if exists public.profiles
-  add column if not exists careers text[] default '{}',
-  add column if not exists primary_career text,
-  add column if not exists secondary_careers text[] default '{}';
-
 do $$
 begin
-  if not exists (
-    select 1 from pg_constraint
-    where conname = 'careers_max_3'
-      and conrelid = 'public.profiles'::regclass
-  ) then
+  if to_regclass('public.profiles') is not null then
     alter table public.profiles
-      add constraint careers_max_3 check (coalesce(array_length(careers, 1), 0) <= 3);
-  end if;
-end $$;
+      add column if not exists careers text[] default '{}',
+      add column if not exists primary_career text,
+      add column if not exists secondary_careers text[] default '{}';
 
-create index if not exists idx_profiles_careers on public.profiles using gin (careers);
+    if not exists (
+      select 1
+      from pg_constraint
+      where conname = 'careers_max_3'
+        and conrelid = to_regclass('public.profiles')
+    ) then
+      alter table public.profiles
+        add constraint careers_max_3
+        check (
+          coalesce(
+            array_length(careers, 1),
+            0
+          ) <= 3
+        );
+    end if;
+
+    execute
+      'create index if not exists idx_profiles_careers
+       on public.profiles using gin (careers)';
+  end if;
+end
+$$;
 
 create table if not exists public.career_performance (
   id uuid primary key default gen_random_uuid(),
@@ -92,3 +104,8 @@ create index if not exists idx_client_profiles_client on public.client_profiles(
 alter table if exists public.user_platforms
   add column if not exists last_sync timestamp,
   add column if not exists performance_score numeric default 0;
+-- Server-only RLS boundary.
+alter table public.career_performance enable row level security;
+alter table public.platform_performance enable row level security;
+alter table public.deal_intelligence enable row level security;
+alter table public.client_profiles enable row level security;

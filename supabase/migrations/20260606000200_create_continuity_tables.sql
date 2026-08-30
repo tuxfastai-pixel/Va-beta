@@ -56,3 +56,8 @@ create index if not exists idx_runtime_snapshot_anchors_user_created
 
 create index if not exists idx_runtime_snapshot_anchors_snapshot
   on public.runtime_snapshot_anchors (snapshot_id);
+-- Server-only RLS boundary.
+alter table public.equilibrium_events enable row level security;
+alter table public.runtime_rollout_policies enable row level security;
+alter table public.runtime_snapshots enable row level security;
+alter table public.runtime_snapshot_anchors enable row level security;

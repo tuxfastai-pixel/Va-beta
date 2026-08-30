@@ -15,3 +15,6 @@ create table if not exists public.user_personalization_states (
 
 create index if not exists idx_user_personalization_states_updated_at
   on public.user_personalization_states (updated_at desc);
+-- Server-only RLS boundary.
+alter table public.trust_history_records enable row level security;
+alter table public.user_personalization_states enable row level security;

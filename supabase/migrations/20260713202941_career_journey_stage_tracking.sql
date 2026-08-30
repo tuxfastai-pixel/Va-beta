@@ -45,3 +45,7 @@ create table if not exists public.cover_letter_generations (
 
 create index if not exists idx_cover_letter_generations_user_job
   on public.cover_letter_generations (user_id, job_id, created_at desc);
+-- Server-only RLS boundary.
+alter table public.career_activation_states enable row level security;
+alter table public.career_journey_state enable row level security;
+alter table public.cover_letter_generations enable row level security;

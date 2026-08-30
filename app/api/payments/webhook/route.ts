@@ -7,14 +7,39 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unknown error";
 }
 
-async function getCustomerEmail(stripe: ReturnType<typeof getStripe>, customerId: string) {
-  const customer = await stripe.customers.retrieve(customerId);
+async function resolveClientIdByEmail(email: string): Promise<string> {
+  const normalizedEmail = email.trim().toLowerCase();
 
-  if ("deleted" in customer && customer.deleted) {
-    return null;
+  const { data: existingClient, error: lookupError } = await supabaseServer
+    .from("clients")
+    .select("id")
+    .eq("email", normalizedEmail)
+    .maybeSingle();
+
+  if (lookupError) {
+    throw new Error(`Failed to resolve Stripe client: ${lookupError.message}`);
   }
 
-  return customer.email;
+  if (existingClient?.id) {
+    return String(existingClient.id);
+  }
+
+  const { data: createdClient, error: createError } = await supabaseServer
+    .from("clients")
+    .insert({
+      email: normalizedEmail,
+      name: normalizedEmail.split("@")[0] || "Stripe client",
+      subscription_type: "growth",
+      created_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+
+  if (createError || !createdClient?.id) {
+    throw new Error(`Failed to create Stripe client: ${createError?.message || "missing client id"}`);
+  }
+
+  return String(createdClient.id);
 }
 
 export async function POST(req: Request) {
@@ -115,6 +140,7 @@ export async function POST(req: Request) {
 
       if (customerEmail && session.subscription) {
         const subscription = await stripe.subscriptions.retrieve(String(session.subscription));
+        const clientId = await resolveClientIdByEmail(customerEmail);
         const stripeCustomerId =
           typeof session.customer === "string"
             ? session.customer
@@ -122,22 +148,26 @@ export async function POST(req: Request) {
 
         const { error } = await supabaseServer
           .from("subscriptions")
-          .insert({
-            client_id: customerEmail,
-            plan: "growth",
-            status: "active",
-            amount: session.amount_total ? session.amount_total / 100 : 0,
-            stripe_subscription_id: subscription.id,
-            stripe_customer_id: stripeCustomerId,
-            created_at: new Date().toISOString(),
-          });
+          .upsert(
+            {
+              client_id: clientId,
+              plan: "growth",
+              status: "active",
+              amount: session.amount_total ? session.amount_total / 100 : 0,
+              stripe_subscription_id: subscription.id,
+              stripe_customer_id: stripeCustomerId,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "stripe_subscription_id" }
+          );
 
         if (error) {
-          console.error(`Error inserting subscription: ${error.message}`);
+          console.error(`Error storing subscription: ${error.message}`);
           return NextResponse.json({ received: true });
         }
 
-        console.log(`Subscription created for ${customerEmail}`);
+        console.log(`Subscription stored for ${customerEmail}`);
       }
     }
 
@@ -145,59 +175,50 @@ export async function POST(req: Request) {
       const invoice = event.data.object as Stripe.Invoice;
 
       if (invoice.customer) {
-        const email = await getCustomerEmail(stripe, String(invoice.customer));
+        const { error } = await supabaseServer
+          .from("subscriptions")
+          .update({
+            status: "past_due",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("stripe_customer_id", String(invoice.customer));
 
-        if (email) {
-          const { error } = await supabaseServer
-            .from("subscriptions")
-            .update({ status: "past_due" })
-            .eq("client_id", email);
-
-          if (error) {
-            console.error(`Error updating subscription status: ${error.message}`);
-          } else {
-            console.log(`Subscription marked past_due for ${email}`);
-          }
+        if (error) {
+          console.error(`Error updating subscription status: ${error.message}`);
         }
       }
     }
-
     if (event.type === "invoice.payment_succeeded") {
       const invoice = event.data.object as Stripe.Invoice;
 
       if (invoice.customer) {
-        const email = await getCustomerEmail(stripe, String(invoice.customer));
+        const { error } = await supabaseServer
+          .from("subscriptions")
+          .update({
+            status: "active",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("stripe_customer_id", String(invoice.customer))
+          .eq("status", "past_due");
 
-        if (email) {
-          const { error } = await supabaseServer
-            .from("subscriptions")
-            .update({ status: "active" })
-            .eq("client_id", email)
-            .eq("status", "past_due");
-
-          if (error) {
-            console.error(`Error reactivating subscription: ${error.message}`);
-          } else {
-            console.log(`Subscription reactivated for ${email}`);
-          }
+        if (error) {
+          console.error(`Error reactivating subscription: ${error.message}`);
         }
       }
     }
-
     if (event.type === "customer.subscription.deleted") {
       const subscription = event.data.object as Stripe.Subscription;
 
-      if (subscription.metadata?.client_id) {
-        const { error } = await supabaseServer
-          .from("subscriptions")
-          .update({ status: "cancelled" })
-          .eq("client_id", subscription.metadata.client_id);
+      const { error } = await supabaseServer
+        .from("subscriptions")
+        .update({
+          status: "cancelled",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("stripe_subscription_id", subscription.id);
 
-        if (error) {
-          console.error(`Error cancelling subscription: ${error.message}`);
-        } else {
-          console.log(`Subscription cancelled for ${subscription.metadata.client_id}`);
-        }
+      if (error) {
+        console.error(`Error cancelling subscription: ${error.message}`);
       }
     }
 

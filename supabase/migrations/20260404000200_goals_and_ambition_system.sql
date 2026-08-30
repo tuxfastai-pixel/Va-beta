@@ -1,21 +1,25 @@
 -- Goals & Auto-Scaling System Migration
 -- Adds dynamic goal scaling and ambition level control
 
-DO $$
-BEGIN
-  -- Add ambition_level to users table
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns 
-    WHERE table_name = 'users' AND column_name = 'ambition_level'
-  ) THEN
-    ALTER TABLE public.users 
-    ADD COLUMN ambition_level text DEFAULT 'normal';
-    
-    ALTER TABLE public.users 
-    ADD CONSTRAINT users_ambition_level_check 
-    CHECK (ambition_level IN ('normal', 'high', 'elite'));
-  END IF;
-END $$;
+do $$
+begin
+  if to_regclass('public.users') is not null then
+    alter table public.users
+      add column if not exists ambition_level text default 'normal';
+
+    if not exists (
+      select 1
+      from pg_constraint
+      where conname = 'users_ambition_level_check'
+        and conrelid = to_regclass('public.users')
+    ) then
+      alter table public.users
+        add constraint users_ambition_level_check
+        check (ambition_level in ('normal', 'high', 'elite'));
+    end if;
+  end if;
+end
+$$;
 
 -- Create goals table
 CREATE TABLE IF NOT EXISTS public.goals (
@@ -80,3 +84,6 @@ CREATE TABLE IF NOT EXISTS public.goal_achievements (
 
 CREATE INDEX IF NOT EXISTS idx_goal_achievements_goal_id ON public.goal_achievements(goal_id);
 CREATE INDEX IF NOT EXISTS idx_goal_achievements_type ON public.goal_achievements(achievement_type);
+-- Server-only RLS boundaries.
+alter table public.goals enable row level security;
+alter table public.goal_achievements enable row level security;

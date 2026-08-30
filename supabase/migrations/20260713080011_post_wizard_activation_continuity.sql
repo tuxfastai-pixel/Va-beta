@@ -91,3 +91,10 @@ create table if not exists public.job_site_application_profiles (
 
 create index if not exists idx_job_site_profiles_user_site
   on public.job_site_application_profiles (user_id, site_name, updated_at desc);
+-- Server-only RLS boundary.
+alter table public.career_activation_states enable row level security;
+alter table public.master_career_profiles enable row level security;
+alter table public.cv_change_records enable row level security;
+alter table public.job_application_versions enable row level security;
+alter table public.learning_sprints enable row level security;
+alter table public.job_site_application_profiles enable row level security;

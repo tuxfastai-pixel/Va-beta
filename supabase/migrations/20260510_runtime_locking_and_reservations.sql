@@ -12,9 +12,6 @@ CREATE TABLE IF NOT EXISTS runtime_locks (
 );
 
 ALTER TABLE runtime_locks ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "service_role_runtime_locks" ON runtime_locks
-  FOR ALL USING (auth.role() = 'service_role');
-
 CREATE INDEX IF NOT EXISTS idx_runtime_locks_owner ON runtime_locks(owner_id);
 CREATE INDEX IF NOT EXISTS idx_runtime_locks_lease ON runtime_locks(lease_expires_at);
 
@@ -33,9 +30,9 @@ CREATE TABLE IF NOT EXISTS runtime_task_reservations (
 );
 
 ALTER TABLE runtime_task_reservations ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "service_role_runtime_task_reservations" ON runtime_task_reservations
-  FOR ALL USING (auth.role() = 'service_role');
-
 CREATE INDEX IF NOT EXISTS idx_runtime_task_owner ON runtime_task_reservations(owner_id);
 CREATE INDEX IF NOT EXISTS idx_runtime_task_status ON runtime_task_reservations(status);
 CREATE INDEX IF NOT EXISTS idx_runtime_task_until ON runtime_task_reservations(reserved_until);
+-- Server-only RLS boundary.
+alter table public.runtime_locks enable row level security;
+alter table public.runtime_task_reservations enable row level security;
