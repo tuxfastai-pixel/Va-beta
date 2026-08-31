@@ -39,12 +39,15 @@ function extractSection(text: string, headings: string[]): string[] {
       continue
     }
 
-    if (active && /^(education|experience|projects|skills|languages|certifications|achievements|interests|summary|contact)/i.test(lower)) {
+    if (
+      active &&
+      /^(education|educational background|post matric|experience|work experience|employment history|career history|projects|skills|key skills|core skills|computer literacy|languages|certifications|achievements|interests|career aspirations|summary|professional summary|profile|preferred roles|target roles|contact|references)/i.test(lower)
+    ) {
       active = false
     }
 
     if (active) {
-      collected.push(line.replace(/^[-*•]\s*/, "").trim())
+      collected.push(line.replace(/^[-*ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢]\s*/, "").trim())
     }
   }
 
@@ -103,7 +106,21 @@ export function structureCvInput(input: {
   const text = String(input.rawText || "").trim()
   const fallback = input.onboardingFallback || {}
 
-  const fullName = text.match(/^([A-Z][a-z]+\s+[A-Z][a-z]+.*)$/m)?.[1] || fallback.name || ""
+  const identityLine = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => {
+      const normalized = line.replace(/^curriculum vitae(?:\s+of)?\s*/i, "").trim()
+      return (
+        normalized.split(/\s+/).length >= 2 &&
+        /^[A-Za-z][A-Za-z' -]+$/.test(normalized)
+      )
+    })
+
+  const fullName =
+    identityLine?.replace(/^curriculum vitae(?:\s+of)?\s*/i, "").trim() ||
+    fallback.name ||
+    ""
   const contactDetails = Array.from(
     new Set([
       ...splitInlineList(text, /contact\s*[:\-]\s*(.+)/i),
@@ -112,14 +129,40 @@ export function structureCvInput(input: {
     ].filter(Boolean)),
   )
 
-  const professionalSummary = extractSection(text, ["professional summary", "summary", "profile"]).join(" ")
-  const education = extractSection(text, ["education", "academic background"])
-  const certifications = extractSection(text, ["certifications", "certification", "licenses"])
-  const workExperience = extractSection(text, ["experience", "work experience", "employment history"])
+  const professionalSummary = extractSection(text, [
+    "professional summary",
+    "summary",
+    "profile",
+    "career aspirations",
+  ]).join(" ")
+  const education = extractSection(text, [
+    "education",
+    "educational background",
+    "academic background",
+    "post matric qualifications",
+  ])
+  const certifications = extractSection(text, [
+    "certifications",
+    "certification",
+    "licenses",
+    "post matric qualifications",
+  ])
+  const workExperience = extractSection(text, [
+    "experience",
+    "work experience",
+    "employment history",
+    "career history",
+  ])
   const projects = extractSection(text, ["projects", "project experience"])
   const skills = Array.from(
     new Set([
-      ...extractSection(text, ["skills", "key skills", "core skills"]),
+      ...extractSection(text, [
+        "skills",
+        "key skills",
+        "core skills",
+        "computer literacy",
+        "technical skills",
+      ]),
       ...splitInlineList(text, /skills\s*[:\-]\s*(.+)/i),
       ...(fallback.selectedCareers || []),
     ]),

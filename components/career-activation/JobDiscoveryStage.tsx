@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -25,6 +25,14 @@ export default function JobDiscoveryStage() {
         if (res.ok) {
           const { jobs: recommendedJobs } = await res.json()
           setJobs(recommendedJobs || [])
+        } else {
+          const payload = (await res.json().catch(() => ({}))) as {
+            error?: string
+          }
+          setStatus(
+            payload.error ||
+              "Could not load recommended jobs."
+          )
         }
       } catch (err) {
         setStatus("Could not load jobs")
@@ -52,6 +60,31 @@ export default function JobDiscoveryStage() {
       setStatus("Could not select job")
       setSelectedJobId(null)
     }
+  }
+
+  const handleSkipToAssessment = async () => {
+    setStatus("Opening assessment...")
+
+    const res = await fetch("/api/career/stage-transition", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ toStage: "job-assessment" }),
+    })
+
+    if (res.ok) {
+      router.push("/career-activation/job-assessment")
+      return
+    }
+
+    const payload = (await res.json().catch(() => ({}))) as {
+      error?: string
+    }
+
+    setStatus(
+      payload.error ||
+        "Could not open assessment. Please try again."
+    )
   }
 
   if (loading) {
@@ -84,7 +117,7 @@ export default function JobDiscoveryStage() {
                 onClick={() => handleSelectJob(job.id)}
               >
                 <h3 style={{ margin: "0 0 8px 0" }}>{job.title}</h3>
-                <p style={{ margin: "0 0 4px 0", color: "#cbd5e1" }}>{job.company} â€¢ {job.level}</p>
+                <p style={{ margin: "0 0 4px 0", color: "#cbd5e1" }}>{job.company} ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ {job.level}</p>
                 <p style={{ margin: "8px 0 0 0", color: "#94a3b8", fontSize: 14 }}>
                   {job.description.substring(0, 150)}...
                 </p>
@@ -94,7 +127,7 @@ export default function JobDiscoveryStage() {
         )}
 
         <button
-          onClick={() => router.push("/career-activation/job-assessment")}
+          onClick={() => void handleSkipToAssessment()}
           style={{
             padding: "12px 24px",
             background: "#3b82f6",

@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -14,6 +14,8 @@ type CareerSummary = {
     remoteReadiness?: string
   }
   skills?: string[]
+  professionalSummary?: string | null
+  missingFields?: string[]
 }
 
 export default function CareerSummaryStage() {
@@ -29,6 +31,14 @@ export default function CareerSummaryStage() {
         if (res.ok) {
           const data = await res.json()
           setSummary(data)
+        } else {
+          const payload = (await res.json().catch(() => ({}))) as {
+            error?: string
+          }
+          setStatus(
+            payload.error ||
+              "Could not load the career summary."
+          )
         }
       } catch (err) {
         setStatus("Could not load career summary")
@@ -48,7 +58,17 @@ export default function CareerSummaryStage() {
     })
     if (res.ok) {
       router.push("/career-activation/job-discovery")
+      return
     }
+
+    const payload = (await res.json().catch(() => ({}))) as {
+      error?: string
+    }
+
+    setStatus(
+      payload.error ||
+        "Could not continue to job discovery."
+    )
   }
 
   if (loading) {
@@ -76,6 +96,13 @@ export default function CareerSummaryStage() {
               <p><strong>Payment:</strong> {summary.readiness.paymentReadiness || "N/A"}</p>
               <p><strong>International:</strong> {summary.readiness.internationalReadiness || "N/A"}</p>
               <p><strong>Remote:</strong> {summary.readiness.remoteReadiness || "N/A"}</p>
+            </div>
+          )}
+
+          {summary?.professionalSummary && (
+            <div style={{ background: "#0b1220", padding: 16, borderRadius: 6, marginBottom: 16 }}>
+              <h3 style={{ marginTop: 0 }}>Professional Summary</h3>
+              <p>{summary.professionalSummary}</p>
             </div>
           )}
 

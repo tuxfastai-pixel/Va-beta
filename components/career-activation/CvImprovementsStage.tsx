@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -27,6 +27,14 @@ export default function CvImprovementsStage() {
         if (res.ok) {
           const { changes: cvChanges } = await res.json()
           setChanges(cvChanges || [])
+        } else {
+          const payload = (await res.json().catch(() => ({}))) as {
+            error?: string
+          }
+          setStatus(
+            payload.error ||
+              "Could not load CV improvements."
+          )
         }
       } catch (err) {
         setStatus("Could not load changes")
@@ -70,7 +78,17 @@ export default function CvImprovementsStage() {
     })
     if (res.ok) {
       router.push("/career-activation/career-summary")
+      return
     }
+
+    const payload = (await res.json().catch(() => ({}))) as {
+      error?: string
+    }
+
+    setStatus(
+      payload.error ||
+        "Could not continue to the career summary."
+    )
   }
 
   if (loading) {
@@ -85,7 +103,10 @@ export default function CvImprovementsStage() {
 
         {changes.length === 0 ? (
           <div style={{ background: "#0b1220", padding: 16, borderRadius: 6, marginBottom: 20 }}>
-            <p>No improvements suggested. Your CV is well-structured.</p>
+            <p>
+              No evidence-based improvements were generated.
+              Return to CV intake if your profile is incomplete.
+            </p>
           </div>
         ) : (
           <div style={{ marginBottom: 20 }}>
@@ -162,7 +183,7 @@ export default function CvImprovementsStage() {
                       color: change.userApprovalStatus === "approved" ? "#10b981" : "#ef4444",
                     }}
                   >
-                    {change.userApprovalStatus === "approved" ? "âœ“ Approved" : "âœ— Rejected"}
+                    {change.userApprovalStatus === "approved" ? "ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“ Approved" : "ÃƒÂ¢Ã…â€œÃ¢â‚¬â€ Rejected"}
                   </div>
                 )}
               </div>

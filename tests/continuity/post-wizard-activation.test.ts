@@ -1,5 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert"
+import { structureCvInput } from "../../lib/career/cvIntake.ts"
 import {
   buildContinuityCheckpoint,
   canClaimSkillOnCv,
@@ -95,4 +96,65 @@ test("Learning skill states cannot be claimed as active CV skills before demonst
   assert.equal(canClaimSkillOnCv("Practised"), false)
   assert.equal(canClaimSkillOnCv("Demonstrated"), true)
   assert.equal(canClaimSkillOnCv("Verified"), true)
+})
+test("Traditional CV headings produce an evidence-based structured profile", () => {
+  const structured = structureCvInput({
+    mode: "paste",
+    rawText: [
+      "CURRICULUM VITAE OF KAMOGELO OMPHILE SENTLE",
+      "Career History",
+      "- Technical Support Technician at Example Company",
+      "Computer Literacy",
+      "- Technical support",
+      "- PC networking",
+      "Career Aspirations",
+      "To provide systems support and develop reliable software.",
+      "Preferred Roles",
+      "- Technical Support Specialist",
+    ].join("\n"),
+  })
+
+  assert.equal(
+    structured.fullName,
+    "KAMOGELO OMPHILE SENTLE"
+  )
+  assert.equal(structured.workExperience.length, 1)
+  assert.equal(
+    structured.workExperience[0],
+    "Technical Support Technician at Example Company"
+  )
+  assert.equal(
+    structured.skills.includes("Technical support"),
+    true
+  )
+  assert.equal(
+    structured.skills.includes("PC networking"),
+    true
+  )
+  assert.match(
+    structured.professionalSummary,
+    /systems support/i
+  )
+})
+
+test("Empty CV input remains visibly incomplete", () => {
+  const structured = structureCvInput({
+    mode: "paste",
+    rawText: "",
+    onboardingFallback: {
+      name: "Pilot User",
+      selectedCareers: [],
+    },
+  })
+
+  assert.equal(structured.workExperience.length, 0)
+  assert.equal(structured.skills.length, 0)
+  assert.equal(
+    structured.missingFields.includes("work_experience"),
+    true
+  )
+  assert.equal(
+    structured.followUpQuestions.length > 0,
+    true
+  )
 })
