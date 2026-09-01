@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSessionUser } from "@/lib/auth/sessionUser"
 import { transitionToStage, getFullJourneyState } from "@/lib/career/careerJourneyService"
-import { isValidStage, validateStageTransition } from "@/lib/career/activationContinuity.ts"
+import { getStageIndex, isValidStage, validateStageTransition } from "@/lib/career/activationContinuity.ts"
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,11 +26,41 @@ export async function POST(request: NextRequest) {
 
     const currentStage = currentState.currentStage || "complete"
 
-    // Validate transition
-    const isValid = validateStageTransition(currentStage, toStage)
+    const completedStages = Array.isArray(
+      currentState.completedStages
+    )
+      ? currentState.completedStages.filter(isValidStage)
+      : []
+
+    const isCompletedRevisit =
+      getStageIndex(toStage) <
+        getStageIndex(currentStage) &&
+      completedStages.includes(toStage)
+
+    // Revisiting a completed page is navigation only. Preserve the
+    // user's furthest saved stage and do not rewrite journey progress.
+    if (isCompletedRevisit) {
+      return NextResponse.json({
+        success: true,
+        stage: toStage,
+        currentStage,
+        revisit: true,
+      })
+    }
+
+    // New progression must still follow the guarded stage order.
+    const isValid = validateStageTransition(
+      currentStage,
+      toStage
+    )
+
     if (!isValid) {
       return NextResponse.json(
-        { error: `Cannot transition from ${currentStage} to ${toStage}` },
+        {
+          error:
+            `Cannot transition from ${currentStage} ` +
+            `to ${toStage}`,
+        },
         { status: 400 }
       )
     }
