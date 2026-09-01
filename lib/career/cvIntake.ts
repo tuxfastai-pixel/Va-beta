@@ -47,7 +47,7 @@ function extractSection(text: string, headings: string[]): string[] {
     }
 
     if (active) {
-      collected.push(line.replace(/^[-*ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢]\s*/, "").trim())
+      collected.push(line.replace(/^[-*ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢]\s*/, "").trim())
     }
   }
 
@@ -68,6 +68,89 @@ function splitInlineList(text: string, regex: RegExp): string[] {
         .filter(Boolean),
     ),
   )
+}
+
+function splitTopLevelList(value: string): string[] {
+  const parts: string[] = []
+  let current = ""
+  let depth = 0
+
+  for (const character of value) {
+    if (character === "(" || character === "[") {
+      depth += 1
+    } else if (
+      character === ")" ||
+      character === "]"
+    ) {
+      depth = Math.max(0, depth - 1)
+    }
+
+    if (
+      depth === 0 &&
+      (
+        character === "," ||
+        character === ";" ||
+        character === "|"
+      )
+    ) {
+      if (current.trim()) {
+        parts.push(current.trim())
+      }
+      current = ""
+      continue
+    }
+
+    current += character
+  }
+
+  if (current.trim()) {
+    parts.push(current.trim())
+  }
+
+  return parts
+}
+
+function normalizeSkillEntries(
+  entries: string[]
+): string[] {
+  const proficiencyLegend =
+    /\b(advanced|solid|subject matter|expert|sme|intermediate|basic)\b/i
+
+  const expanded =
+    entries.flatMap((entry) => {
+      const colonIndex =
+        entry.indexOf(":")
+
+      const candidate =
+        colonIndex > -1 &&
+        proficiencyLegend.test(
+          entry.slice(0, colonIndex)
+        )
+          ? entry.slice(colonIndex + 1)
+          : entry
+
+      return splitTopLevelList(candidate)
+    })
+
+  const seen = new Set<string>()
+  const normalized: string[] = []
+
+  for (const item of expanded) {
+    const cleaned =
+      item.replace(/\s+/g, " ").trim()
+
+    const key =
+      cleaned.toLowerCase()
+
+    if (!cleaned || seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    normalized.push(cleaned)
+  }
+
+  return normalized
 }
 
 function targetedFollowUps(structured: StructuredCv) {
@@ -154,19 +237,20 @@ export function structureCvInput(input: {
     "career history",
   ])
   const projects = extractSection(text, ["projects", "project experience"])
-  const skills = Array.from(
-    new Set([
-      ...extractSection(text, [
-        "skills",
-        "key skills",
-        "core skills",
-        "computer literacy",
-        "technical skills",
-      ]),
-      ...splitInlineList(text, /skills\s*[:\-]\s*(.+)/i),
-      ...(fallback.selectedCareers || []),
+  const skills = normalizeSkillEntries([
+    ...extractSection(text, [
+      "skills",
+      "key skills",
+      "core skills",
+      "computer literacy",
+      "technical skills",
     ]),
-  )
+    ...splitInlineList(
+      text,
+      /skills\s*[:\-]\s*(.+)/i
+    ),
+    ...(fallback.selectedCareers || []),
+  ])
   const softwareTools = extractSection(text, ["software", "tools", "tech stack"])
   const languages = extractSection(text, ["languages", "language proficiency"])
   const achievements = extractSection(text, ["achievements", "accomplishments"])

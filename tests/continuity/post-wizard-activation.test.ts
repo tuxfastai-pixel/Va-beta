@@ -158,3 +158,25 @@ test("Empty CV input remains visibly incomplete", () => {
     true
   )
 })
+test("Proficiency legends become individual ATS skills", () => {
+  const structured = structureCvInput({
+    mode: "paste",
+    rawText: [
+      "CURRICULUM VITAE OF PILOT USER",
+      "Computer Literacy",
+      "Advanced, Solid, Subject Matter Expert (SME), Intermediate or Basic: MS Office XP (Word, Excel, PowerPoint, Outlook) (Advanced), Internet (Solid), MS Project '98 (Basic), Visio 2007",
+      "Preferred Roles",
+      "Technical Support Specialist",
+    ].join("\n"),
+  })
+
+  assert.deepEqual(
+    structured.skills,
+    [
+      "MS Office XP (Word, Excel, PowerPoint, Outlook) (Advanced)",
+      "Internet (Solid)",
+      "MS Project '98 (Basic)",
+      "Visio 2007",
+    ]
+  )
+})
