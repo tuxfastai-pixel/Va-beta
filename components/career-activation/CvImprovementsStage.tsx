@@ -291,7 +291,7 @@ export default function CvImprovementsStage() {
                         color: "#94a3b8",
                       }}
                     >
-                      Confidence:{" "}
+                      Evidence confidence:{" "}
                       {Math.round(
                         change.confidence * 100
                       )}
@@ -356,24 +356,30 @@ export default function CvImprovementsStage() {
                       {change.proposedText}
                     </p>
 
-                    <p
+                    <details
                       style={{
-                        margin: "12px 0 4px",
+                        marginTop: 12,
                         color: "#94a3b8",
                       }}
                     >
-                      Evidence used
-                    </p>
+                      <summary
+                        style={{
+                          cursor: "pointer",
+                        }}
+                      >
+                        View supporting CV evidence
+                      </summary>
 
-                    <p
-                      style={{
-                        margin: 0,
-                        color: "#cbd5e1",
-                        whiteSpace: "pre-wrap",
-                      }}
-                    >
-                      {change.sourceEvidence}
-                    </p>
+                      <p
+                        style={{
+                          margin: "8px 0 0",
+                          color: "#cbd5e1",
+                          whiteSpace: "pre-wrap",
+                        }}
+                      >
+                        {change.sourceEvidence}
+                      </p>
+                    </details>
                   </div>
 
                   {change.userApprovalStatus ===

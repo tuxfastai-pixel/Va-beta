@@ -20,6 +20,7 @@ type ChangeProposal = {
 }
 
 type EvidenceEntry = {
+  id: string
   section: string
   text: string
 }
@@ -75,16 +76,29 @@ function collectEvidence(
 ): EvidenceEntry[] {
   const entries: EvidenceEntry[] = []
 
-  const summary = String(
-    structured.professionalSummary || ""
-  ).trim()
+  const addEvidence = (
+    section: string,
+    text: string
+  ) => {
+    const cleaned = text.trim()
 
-  if (summary) {
+    if (!cleaned) {
+      return
+    }
+
     entries.push({
-      section: "professional_summary",
-      text: summary,
+      id: `evidence-${entries.length + 1}`,
+      section,
+      text: cleaned,
     })
   }
+
+  addEvidence(
+    "professional_summary",
+    String(
+      structured.professionalSummary || ""
+    )
+  )
 
   const mappings: Array<{
     source: string
@@ -122,10 +136,7 @@ function collectEvidence(
         structured[mapping.source]
       )
     ) {
-      entries.push({
-        section: mapping.section,
-        text,
-      })
+      addEvidence(mapping.section, text)
     }
   }
 
@@ -161,6 +172,11 @@ function hasUnsupportedNumbers(
   )
 }
 
+function comparisonKey(value: string): string {
+  return normalize(value)
+    .replace(/[^a-z0-9]+/g, "")
+}
+
 function validateModelChanges(
   raw: unknown,
   evidence: EvidenceEntry[]
@@ -173,19 +189,18 @@ function validateModelChanges(
   }
 
   const accepted: ChangeProposal[] = []
-  const seen =
-    new Set<string>()
+  const seen = new Set<string>()
 
   for (const item of container.slice(0, 10)) {
     if (!isRecord(item)) {
       continue
     }
 
+    const evidenceId =
+      String(item.evidenceId || "").trim()
+
     const section =
       String(item.section || "").trim()
-
-    const requestedOriginal =
-      String(item.originalText || "").trim()
 
     const proposedText =
       String(item.proposedText || "").trim()
@@ -194,31 +209,19 @@ function validateModelChanges(
       String(item.reason || "").trim()
 
     if (
+      !evidenceId ||
       !ALLOWED_SECTIONS.has(section) ||
-      !requestedOriginal ||
       !proposedText ||
       !reason
     ) {
       continue
     }
 
-    const originalNormalized =
-      normalize(requestedOriginal)
-
     const matchedEvidence =
       evidence.find(
         (entry) =>
-          entry.section === section &&
-          (
-            normalize(entry.text) ===
-              originalNormalized ||
-            normalize(entry.text).includes(
-              originalNormalized
-            ) ||
-            originalNormalized.includes(
-              normalize(entry.text)
-            )
-          )
+          entry.id === evidenceId &&
+          entry.section === section
       )
 
     if (!matchedEvidence) {
@@ -226,8 +229,8 @@ function validateModelChanges(
     }
 
     if (
-      normalize(matchedEvidence.text) ===
-      normalize(proposedText)
+      comparisonKey(matchedEvidence.text) ===
+      comparisonKey(proposedText)
     ) {
       continue
     }
@@ -242,9 +245,8 @@ function validateModelChanges(
     }
 
     const key = [
-      section,
-      normalize(matchedEvidence.text),
-      normalize(proposedText),
+      evidenceId,
+      comparisonKey(proposedText),
     ].join("|")
 
     if (seen.has(key)) {
@@ -259,21 +261,20 @@ function validateModelChanges(
     const confidence =
       Number.isFinite(requestedConfidence)
         ? Math.max(
-            0.5,
+            0.55,
             Math.min(
-              0.95,
+              0.9,
               requestedConfidence
             )
           )
-        : 0.75
+        : 0.7
 
     accepted.push({
       section,
       originalText: matchedEvidence.text,
       proposedText,
       reason,
-      sourceEvidence:
-        matchedEvidence.text,
+      sourceEvidence: matchedEvidence.text,
       confidence,
     })
   }
@@ -281,79 +282,39 @@ function validateModelChanges(
   return accepted.slice(0, 8)
 }
 
-function uniqueStrings(
-  values: string[]
-): string[] {
-  const seen = new Set<string>()
-  const result: string[] = []
+function prepareModelEvidence(
+  evidence: EvidenceEntry[]
+): EvidenceEntry[] {
+  const result: EvidenceEntry[] = []
+  const totalBudget = 12000
+  const entryLimit = 2000
+  let used = 0
 
-  for (const value of values) {
-    const cleaned =
-      value.replace(/\s+/g, " ").trim()
+  for (const entry of evidence) {
+    const remaining = totalBudget - used
 
-    const key =
-      cleaned.toLowerCase()
+    if (remaining < 100) {
+      break
+    }
 
-    if (!cleaned || seen.has(key)) {
+    const text = entry.text.slice(
+      0,
+      Math.min(entryLimit, remaining)
+    )
+
+    if (!text.trim()) {
       continue
     }
 
-    seen.add(key)
-    result.push(cleaned)
+    result.push({
+      ...entry,
+      text,
+    })
+
+    used += text.length
   }
 
   return result
-}
-
-function deterministicFallback(
-  structured: StructuredProfile
-): ChangeProposal[] {
-  const changes: ChangeProposal[] = []
-
-  const summary = String(
-    structured.professionalSummary || ""
-  )
-
-  const normalizedSummary =
-    summary.replace(/\s+/g, " ").trim()
-
-  if (
-    summary &&
-    normalizedSummary !== summary
-  ) {
-    changes.push({
-      section: "professional_summary",
-      originalText: summary,
-      proposedText: normalizedSummary,
-      reason:
-        "Normalize spacing while preserving every factual claim.",
-      sourceEvidence: summary,
-      confidence: 0.99,
-    })
-  }
-
-  const skills =
-    asStrings(structured.skills)
-
-  const uniqueSkills =
-    uniqueStrings(skills)
-
-  if (
-    skills.length > 0 &&
-    uniqueSkills.length !== skills.length
-  ) {
-    changes.push({
-      section: "skills",
-      originalText: skills.join(", "),
-      proposedText: uniqueSkills.join(", "),
-      reason:
-        "Remove exact duplicate skills without adding unsupported capabilities.",
-      sourceEvidence: skills.join(", "),
-      confidence: 0.99,
-    })
-  }
-
-  return changes
 }
 
 async function generateAiChanges(
@@ -362,22 +323,8 @@ async function generateAiChanges(
   userId: string
 ): Promise<ChangeProposal[]> {
   const reviewProfile = {
-    professionalSummary:
-      String(
-        structured.professionalSummary || ""
-      ),
-    workExperience:
-      asStrings(structured.workExperience),
-    skills:
-      asStrings(structured.skills),
-    education:
-      asStrings(structured.education),
-    certifications:
-      asStrings(structured.certifications),
-    projects:
-      asStrings(structured.projects),
-    achievements:
-      asStrings(structured.achievements),
+    evidence:
+      prepareModelEvidence(evidence),
     preferredRoles:
       asStrings(structured.preferredRoles),
   }
@@ -391,16 +338,19 @@ async function generateAiChanges(
         {
           role: "system",
           content: [
-            "You are an evidence-controlled CV editor.",
-            "Improve clarity, professional tone, ATS readability, and impact.",
-            "Never invent employers, duties, achievements, metrics, dates, qualifications, certifications, tools, or experience.",
-            "Do not merely repeat the original or append vague phrases.",
-            "If evidence is weak, improve wording conservatively.",
-            "For skills, separate genuine tools or capabilities and remove proficiency-legend noise.",
-            "Each originalText must be copied exactly from one supplied field.",
+            "You are a senior CV editor producing material, employer-focused improvements.",
+            "Use only the supplied evidence and preferred-role context.",
+            "Rewrite passive, repetitive, outdated or unclear wording into concise professional CV language.",
+            "For a professional summary, emphasize demonstrated direction, capabilities and value without inventing experience.",
+            "For work experience, improve clarity and action orientation without inventing outcomes or responsibilities.",
+            "Never invent employers, duties, achievements, metrics, dates, qualifications, certifications, tools or years of experience.",
+            "Do not return spelling-only, punctuation-only, capitalization-only or spacing-only changes.",
+            "Do not repeat the source with vague phrases appended.",
+            "Every suggestion must reference exactly one supplied evidenceId and its matching section.",
+            "Omit an entry when no material evidence-controlled improvement is possible.",
             "Return JSON only in this shape:",
-            '{"changes":[{"section":"professional_summary|work_experience|skills|education|certifications|projects|achievements","originalText":"exact source text","proposedText":"improved text","reason":"specific explanation","confidence":0.0}]}',
-            "Return at most eight material improvements.",
+            '{"changes":[{"evidenceId":"evidence-1","section":"professional_summary|work_experience|skills|education|certifications|projects|achievements","proposedText":"materially improved text","reason":"specific explanation of the improvement","confidence":0.0}]}',
+            "Return at most eight distinct material improvements.",
           ].join("\n"),
         },
         {
@@ -410,7 +360,8 @@ async function generateAiChanges(
         },
       ],
       retries: 1,
-      maxTotalChars: 18000,
+      maxContentLength: 16000,
+      maxTotalChars: 20000,
       telemetry: {
         feature: "cv_evidence_review",
         userId,
@@ -486,16 +437,7 @@ export async function POST() {
   const evidence =
     collectEvidence(structured)
 
-  let generationMode:
-    | "ai"
-    | "deterministic_fallback" =
-      "ai"
-
-  let warning:
-    | string
-    | undefined
-
-  let changes: ChangeProposal[] = []
+  let changes: ChangeProposal[]
 
   try {
     changes =
@@ -504,23 +446,33 @@ export async function POST() {
         evidence,
         session.userId
       )
-
-    if (changes.length === 0) {
-      throw new Error(
-        "The model returned no grounded improvements."
-      )
-    }
   } catch (error) {
-    generationMode =
-      "deterministic_fallback"
-
-    changes =
-      deterministicFallback(structured)
-
-    warning =
+    console.error(
+      "CV AI review failed:",
       error instanceof Error
-        ? `AI review was unavailable: ${error.message}`
-        : "AI review was unavailable."
+        ? error.message
+        : "Unknown model error"
+    )
+
+    return NextResponse.json(
+      {
+        error:
+          "The AI CV review is temporarily unavailable. Your CV was saved, but no fallback suggestion was presented. Please try again.",
+        generationMode: "failed",
+      },
+      { status: 502 }
+    )
+  }
+
+  if (changes.length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          "The AI returned no material evidence-based improvements. No cosmetic fallback was created.",
+        generationMode: "no_material_changes",
+      },
+      { status: 422 }
+    )
   }
 
   // These rows are derived suggestions, not source CV evidence.
@@ -588,8 +540,7 @@ export async function POST() {
   return NextResponse.json({
     success: true,
     profileId: masterProfile.id,
-    generationMode,
-    warning,
+    generationMode: "ai",
     changes: rows,
     constraints: {
       inventEmployment: false,

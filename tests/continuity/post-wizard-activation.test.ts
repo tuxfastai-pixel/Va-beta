@@ -1,5 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert"
+import { readFile } from "node:fs/promises"
 import { structureCvInput } from "../../lib/career/cvIntake.ts"
 import {
   buildContinuityCheckpoint,
@@ -178,5 +179,51 @@ test("Proficiency legends become individual ATS skills", () => {
       "MS Project '98 (Basic)",
       "Visio 2007",
     ]
+  )
+})
+
+test("CV enhancement uses stable evidence IDs and never presents a cosmetic fallback", async () => {
+  const route = await readFile(
+    new URL(
+      "../../app/api/career/cv-enhance/route.ts",
+      import.meta.url
+    ),
+    "utf8"
+  )
+
+  const intake = await readFile(
+    new URL(
+      "../../components/career-activation/CvIntakeStage.tsx",
+      import.meta.url
+    ),
+    "utf8"
+  )
+
+  const review = await readFile(
+    new URL(
+      "../../components/career-activation/CvImprovementsStage.tsx",
+      import.meta.url
+    ),
+    "utf8"
+  )
+
+  assert.match(route, /evidenceId/)
+  assert.match(route, /generationMode: "failed"/)
+  assert.match(route, /status: 502/)
+  assert.doesNotMatch(
+    route,
+    /deterministicFallback/
+  )
+  assert.doesNotMatch(
+    route,
+    /Normalize spacing while preserving/
+  )
+  assert.match(
+    intake,
+    /generationMode !== "ai"/
+  )
+  assert.match(
+    review,
+    /View supporting CV evidence/
   )
 })

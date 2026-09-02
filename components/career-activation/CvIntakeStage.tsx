@@ -143,14 +143,28 @@ export default function CvIntakeStage() {
         }
       )
 
-      if (!enhanceRes.ok) {
-        const payload =
-          (await enhanceRes.json().catch(() => ({}))) as {
-            error?: string
-          }
+      const enhancePayload =
+        (await enhanceRes.json().catch(
+          () => ({})
+        )) as {
+          error?: string
+          generationMode?: string
+        }
 
+      if (!enhanceRes.ok) {
         setStatus(
-          payload.error || "Could not analyze CV."
+          enhancePayload.error ||
+            "Could not analyze CV."
+        )
+        return
+      }
+
+      if (
+        enhancePayload.generationMode !== "ai"
+      ) {
+        setStatus(
+          enhancePayload.error ||
+            "A genuine AI CV review was not generated. Please try again."
         )
         return
       }
