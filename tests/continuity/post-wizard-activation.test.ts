@@ -209,6 +209,10 @@ test("CV enhancement uses stable evidence IDs and never presents a cosmetic fall
 
   assert.match(route, /evidenceId/)
   assert.match(route, /generationMode: "failed"/)
+  assert.doesNotMatch(
+    route,
+    /telemetry:/
+  )
   assert.match(route, /status: 502/)
   assert.doesNotMatch(
     route,

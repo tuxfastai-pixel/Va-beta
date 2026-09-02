@@ -319,8 +319,7 @@ function prepareModelEvidence(
 
 async function generateAiChanges(
   structured: StructuredProfile,
-  evidence: EvidenceEntry[],
-  userId: string
+  evidence: EvidenceEntry[]
 ): Promise<ChangeProposal[]> {
   const reviewProfile = {
     evidence:
@@ -362,10 +361,6 @@ async function generateAiChanges(
       retries: 1,
       maxContentLength: 16000,
       maxTotalChars: 20000,
-      telemetry: {
-        feature: "cv_evidence_review",
-        userId,
-      },
       request: {
         temperature: 0.2,
         response_format: {
@@ -443,8 +438,7 @@ export async function POST() {
     changes =
       await generateAiChanges(
         structured,
-        evidence,
-        session.userId
+        evidence
       )
   } catch (error) {
     console.error(
