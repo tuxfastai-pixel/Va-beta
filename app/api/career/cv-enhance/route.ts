@@ -223,15 +223,53 @@ function requiresWorkConfirmation(
     ) ||
     wordCount(originalText) <= 5
 
+  const evidenceWordCount =
+    responsibility
+      ? wordCount(responsibility)
+      : position
+        ? wordCount(position)
+        : wordCount(originalText)
+
   return Boolean(
     sparseEvidence &&
     wordCount(proposedText) >
-      wordCount(originalText) + 3
+      evidenceWordCount + 3
   )
 }
 
-function fallbackWorkQuestions():
-  ConfirmationQuestion[] {
+function fallbackWorkQuestions(
+  sourceEvidence: string
+): ConfirmationQuestion[] {
+  const cashierOrTeller =
+    /\b(cashier|teller)\b/i.test(
+      sourceEvidence
+    )
+
+  if (cashierOrTeller) {
+    return [
+      {
+        id: "customer-transactions",
+        prompt:
+          "Which customer transactions or payment methods did you personally process?",
+      },
+      {
+        id: "till-or-pos",
+        prompt:
+          "Did you use a till or point-of-sale system? If yes, identify what you used.",
+      },
+      {
+        id: "cash-control",
+        prompt:
+          "Did you count, balance, reconcile or record cash and daily takings? Describe only what you personally did.",
+      },
+      {
+        id: "customer-service",
+        prompt:
+          "Which customer-service responsibilities did you personally handle?",
+      },
+    ]
+  }
+
   return [
     {
       id: "actual-duties",
@@ -239,14 +277,14 @@ function fallbackWorkQuestions():
         "Which tasks did you personally perform in this role?",
     },
     {
-      id: "tools-and-transactions",
+      id: "tools-and-processes",
       prompt:
-        "Which tools, systems, payment methods or transaction processes did you personally use?",
+        "Which tools, systems, equipment or work processes did you personally use?",
     },
     {
-      id: "records-and-reconciliation",
+      id: "responsibility-and-results",
       prompt:
-        "Did you balance, reconcile, record or report any transactions? If yes, describe exactly what you did.",
+        "What responsibilities or results can you verify from this role?",
     },
   ]
 }
@@ -347,7 +385,9 @@ function validateModelChanges(
       confirmationQuestions.length === 0
     ) {
       confirmationQuestions =
-        fallbackWorkQuestions()
+        fallbackWorkQuestions(
+          matchedEvidence.text
+        )
     }
 
     const requestedConfidence =

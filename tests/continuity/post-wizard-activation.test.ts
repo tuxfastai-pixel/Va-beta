@@ -138,6 +138,64 @@ test("Traditional CV headings produce an evidence-based structured profile", () 
   )
 })
 
+test("Labelled career history is grouped into complete employment records", () => {
+  const structured = structureCvInput({
+    mode: "paste",
+    rawText: [
+      "CURRICULUM VITAE OF PILOT USER",
+      "Career History",
+      "Company:",
+      "Lesedi Restaurant and Liquor Store",
+      "Position Held:",
+      "Teller",
+      "Responsibilities:",
+      "Cashier",
+      "Employment Period:",
+      "One year",
+      "Company:",
+      "Example Technology",
+      "Position Held:",
+      "Technician",
+      "Responsibilities:",
+      "Hardware and software support",
+      "Employment Period:",
+      "2020 - 2021",
+      "Computer Literacy",
+      "Technical support",
+    ].join("\n"),
+  })
+
+  assert.equal(
+    structured.workExperience.length,
+    2
+  )
+
+  assert.match(
+    structured.workExperience[0],
+    /Company: Lesedi Restaurant and Liquor Store/
+  )
+
+  assert.match(
+    structured.workExperience[0],
+    /Position: Teller/
+  )
+
+  assert.match(
+    structured.workExperience[0],
+    /Responsibilities: Cashier/
+  )
+
+  assert.match(
+    structured.workExperience[0],
+    /Employment period: One year/
+  )
+
+  assert.match(
+    structured.workExperience[1],
+    /Position: Technician/
+  )
+})
+
 test("Empty CV input remains visibly incomplete", () => {
   const structured = structureCvInput({
     mode: "paste",

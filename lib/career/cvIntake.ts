@@ -20,7 +20,11 @@ export type StructuredCv = {
   followUpQuestions: string[]
 }
 
-function extractSection(text: string, headings: string[]): string[] {
+function extractSection(
+  text: string,
+  headings: string[],
+  deduplicate = true
+): string[] {
   const lines = text
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -47,11 +51,16 @@ function extractSection(text: string, headings: string[]): string[] {
     }
 
     if (active) {
-      collected.push(line.replace(/^[-*ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢]\s*/, "").trim())
+      collected.push(line.replace(/^[-*ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢]\s*/, "").trim())
     }
   }
 
-  return Array.from(new Set(collected.filter(Boolean)))
+  const filtered =
+    collected.filter(Boolean)
+
+  return deduplicate
+    ? Array.from(new Set(filtered))
+    : filtered
 }
 
 function splitInlineList(text: string, regex: RegExp): string[] {
@@ -153,6 +162,181 @@ function normalizeSkillEntries(
   return normalized
 }
 
+type WorkRecord = {
+  company: string[]
+  position: string[]
+  responsibilities: string[]
+  period: string[]
+}
+
+function groupWorkExperience(
+  entries: string[]
+): string[] {
+  const labelPattern =
+    /^(company(?:\s+name)?|employer|position\s+held|position|job\s+title|responsibilit(?:y|ies)|duties|employment\s+period|employment\s+dates|period|duration|dates)\s*:?\s*(.*)$/i
+
+  const hasStructuredLabels =
+    entries.some((entry) =>
+      labelPattern.test(entry)
+    )
+
+  if (!hasStructuredLabels) {
+    return entries
+  }
+
+  const grouped: string[] = []
+
+  const emptyRecord = (): WorkRecord => ({
+    company: [],
+    position: [],
+    responsibilities: [],
+    period: [],
+  })
+
+  let record = emptyRecord()
+  let pending:
+    keyof WorkRecord | null = null
+
+  const hasValues = () =>
+    Object.values(record).some(
+      (values) => values.length > 0
+    )
+
+  const append = (
+    key: keyof WorkRecord,
+    value: string
+  ) => {
+    const cleaned =
+      value.replace(/\s+/g, " ").trim()
+
+    if (cleaned) {
+      record[key].push(cleaned)
+    }
+  }
+
+  const flush = () => {
+    if (!hasValues()) {
+      return
+    }
+
+    const lines = [
+      record.company.length > 0
+        ? `Company: ${record.company.join(" ")}`
+        : "",
+      record.position.length > 0
+        ? `Position: ${record.position.join(" ")}`
+        : "",
+      record.responsibilities.length > 0
+        ? `Responsibilities: ${record.responsibilities.join(" ")}`
+        : "",
+      record.period.length > 0
+        ? `Employment period: ${record.period.join(" ")}`
+        : "",
+    ].filter(Boolean)
+
+    if (lines.length > 0) {
+      grouped.push(lines.join("\n"))
+    }
+
+    record = emptyRecord()
+    pending = null
+  }
+
+  const fieldFor = (
+    label: string
+  ): keyof WorkRecord => {
+    if (
+      /company|employer/i.test(label)
+    ) {
+      return "company"
+    }
+
+    if (
+      /position|job\s+title/i.test(label)
+    ) {
+      return "position"
+    }
+
+    if (
+      /responsibilit|duties/i.test(label)
+    ) {
+      return "responsibilities"
+    }
+
+    return "period"
+  }
+
+  for (const entry of entries) {
+    const cleaned =
+      entry.replace(/\s+/g, " ").trim()
+
+    if (!cleaned) {
+      continue
+    }
+
+    const match =
+      cleaned.match(labelPattern)
+
+    if (match) {
+      const field =
+        fieldFor(match[1])
+
+      if (
+        (
+          field === "company" &&
+          hasValues()
+        ) ||
+        (
+          field === "position" &&
+          record.position.length > 0
+        )
+      ) {
+        flush()
+      }
+
+      const inlineValue =
+        String(match[2] || "").trim()
+
+      if (inlineValue) {
+        append(field, inlineValue)
+        pending = null
+      } else {
+        pending = field
+      }
+
+      continue
+    }
+
+    if (pending) {
+      append(pending, cleaned)
+      pending = null
+      continue
+    }
+
+    if (
+      record.responsibilities.length > 0
+    ) {
+      append(
+        "responsibilities",
+        cleaned
+      )
+    } else if (
+      record.position.length === 0
+    ) {
+      append("position", cleaned)
+    } else {
+      append(
+        "responsibilities",
+        cleaned
+      )
+    }
+  }
+
+  flush()
+
+  return grouped
+}
+
 function targetedFollowUps(structured: StructuredCv) {
   const prompts: string[] = []
 
@@ -230,12 +414,18 @@ export function structureCvInput(input: {
     "licenses",
     "post matric qualifications",
   ])
-  const workExperience = extractSection(text, [
-    "experience",
-    "work experience",
-    "employment history",
-    "career history",
-  ])
+  const workExperience = groupWorkExperience(
+    extractSection(
+      text,
+      [
+        "experience",
+        "work experience",
+        "employment history",
+        "career history",
+      ],
+      false
+    )
+  )
   const projects = extractSection(text, ["projects", "project experience"])
   const skills = normalizeSkillEntries([
     ...extractSection(text, [
