@@ -5,6 +5,10 @@ import {
   executeModelRequest,
   extractTextFromCompletion,
 } from "@/lib/ai/executeModelRequest"
+import {
+  validateConfirmationQuestions,
+  type ConfirmationQuestion,
+} from "@/lib/career/cvConfirmation"
 
 export const dynamic = "force-dynamic"
 
@@ -17,6 +21,10 @@ type ChangeProposal = {
   reason: string
   sourceEvidence: string
   confidence: number
+  confirmationStatus:
+    | "not_required"
+    | "needs_confirmation"
+  confirmationQuestions: ConfirmationQuestion[]
 }
 
 type EvidenceEntry = {
@@ -177,6 +185,72 @@ function comparisonKey(value: string): string {
     .replace(/[^a-z0-9]+/g, "")
 }
 
+function wordCount(value: string): number {
+  return normalize(value)
+    .split(/\s+/)
+    .filter(Boolean)
+    .length
+}
+
+function requiresWorkConfirmation(
+  section: string,
+  originalText: string,
+  proposedText: string
+): boolean {
+  if (section !== "work_experience") {
+    return false
+  }
+
+  const responsibility =
+    originalText.match(
+      /responsibilit(?:y|ies)\s*:\s*([^\r\n]+)/i
+    )?.[1] || ""
+
+  const position =
+    originalText.match(
+      /position(?:\s+held)?\s*:\s*([^\r\n]+)/i
+    )?.[1] || ""
+
+  const sparseEvidence =
+    (
+      responsibility &&
+      wordCount(responsibility) <= 4
+    ) ||
+    (
+      !responsibility &&
+      position &&
+      wordCount(position) <= 4
+    ) ||
+    wordCount(originalText) <= 5
+
+  return Boolean(
+    sparseEvidence &&
+    wordCount(proposedText) >
+      wordCount(originalText) + 3
+  )
+}
+
+function fallbackWorkQuestions():
+  ConfirmationQuestion[] {
+  return [
+    {
+      id: "actual-duties",
+      prompt:
+        "Which tasks did you personally perform in this role?",
+    },
+    {
+      id: "tools-and-transactions",
+      prompt:
+        "Which tools, systems, payment methods or transaction processes did you personally use?",
+    },
+    {
+      id: "records-and-reconciliation",
+      prompt:
+        "Did you balance, reconcile, record or report any transactions? If yes, describe exactly what you did.",
+    },
+  ]
+}
+
 function validateModelChanges(
   raw: unknown,
   evidence: EvidenceEntry[]
@@ -255,6 +329,27 @@ function validateModelChanges(
 
     seen.add(key)
 
+    let confirmationQuestions =
+      validateConfirmationQuestions(
+        item.confirmationQuestions
+      )
+
+    const needsConfirmation =
+      item.requiresConfirmation === true ||
+      requiresWorkConfirmation(
+        section,
+        matchedEvidence.text,
+        proposedText
+      )
+
+    if (
+      needsConfirmation &&
+      confirmationQuestions.length === 0
+    ) {
+      confirmationQuestions =
+        fallbackWorkQuestions()
+    }
+
     const requestedConfidence =
       Number(item.confidence)
 
@@ -276,6 +371,11 @@ function validateModelChanges(
       reason,
       sourceEvidence: matchedEvidence.text,
       confidence,
+      confirmationStatus:
+        needsConfirmation
+          ? "needs_confirmation"
+          : "not_required",
+      confirmationQuestions,
     })
   }
 
@@ -342,13 +442,17 @@ async function generateAiChanges(
             "Rewrite passive, repetitive, outdated or unclear wording into concise professional CV language.",
             "For a professional summary, emphasize demonstrated direction, capabilities and value without inventing experience.",
             "For work experience, improve clarity and action orientation without inventing outcomes or responsibilities.",
+            "When the evidence only names a role or gives a vague duty such as Cashier, Teller, Technician or Support, do not silently infer detailed duties.",
+            "Set requiresConfirmation to true when a stronger reconstruction depends on duties, tools, transactions, records, outcomes or responsibilities that the evidence does not explicitly confirm.",
+            "For those entries, provide one to five short factual confirmationQuestions with stable lowercase IDs.",
+            "A question must ask only for information needed to verify the proposed reconstruction.",
             "Never invent employers, duties, achievements, metrics, dates, qualifications, certifications, tools or years of experience.",
             "Do not return spelling-only, punctuation-only, capitalization-only or spacing-only changes.",
             "Do not repeat the source with vague phrases appended.",
             "Every suggestion must reference exactly one supplied evidenceId and its matching section.",
             "Omit an entry when no material evidence-controlled improvement is possible.",
             "Return JSON only in this shape:",
-            '{"changes":[{"evidenceId":"evidence-1","section":"professional_summary|work_experience|skills|education|certifications|projects|achievements","proposedText":"materially improved text","reason":"specific explanation of the improvement","confidence":0.0}]}',
+            '{"changes":[{"evidenceId":"evidence-1","section":"professional_summary|work_experience|skills|education|certifications|projects|achievements","proposedText":"materially improved text","reason":"specific explanation","confidence":0.0,"requiresConfirmation":false,"confirmationQuestions":[{"id":"actual-duties","prompt":"Which duties did you personally perform?"}]}]}',
             "Return at most eight distinct material improvements.",
           ].join("\n"),
         },
@@ -514,6 +618,13 @@ export async function POST() {
         confidence: change.confidence,
         user_approval_status:
           "pending",
+        confirmation_status:
+          change.confirmationStatus,
+        confirmation_questions:
+          change.confirmationQuestions,
+        confirmation_answers: {},
+        confirmed_evidence: "",
+        confirmed_at: null,
       })
     )
 

@@ -1,6 +1,9 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import {
+  useEffect,
+  useState,
+} from "react"
 import { useRouter } from "next/navigation"
 
 type ChangeStatus =
@@ -8,6 +11,19 @@ type ChangeStatus =
   | "approved"
   | "rejected"
   | "edited"
+
+type ConfirmationStatus =
+  | "not_required"
+  | "needs_confirmation"
+  | "confirmed"
+
+type ConfirmationQuestion = {
+  id: string
+  prompt: string
+}
+
+type ConfirmationAnswers =
+  Record<string, string>
 
 type ChangeRecord = {
   id: string
@@ -18,13 +34,23 @@ type ChangeRecord = {
   sourceEvidence: string
   confidence: number
   userApprovalStatus: ChangeStatus
+  confirmationStatus: ConfirmationStatus
+  confirmationQuestions:
+    ConfirmationQuestion[]
+  confirmationAnswers:
+    ConfirmationAnswers
+  confirmedEvidence: string
 }
 
 type ChangesPayload = {
   changes?: ChangeRecord[]
   change?: ChangeRecord
   error?: string
+  missingQuestionIds?: string[]
 }
+
+type AnswersByChange =
+  Record<string, ConfirmationAnswers>
 
 export default function CvImprovementsStage() {
   const router = useRouter()
@@ -32,10 +58,13 @@ export default function CvImprovementsStage() {
   const [changes, setChanges] =
     useState<ChangeRecord[]>([])
 
+  const [answers, setAnswers] =
+    useState<AnswersByChange>({})
+
   const [loading, setLoading] =
     useState(true)
 
-  const [decisionLoading, setDecisionLoading] =
+  const [activeRequest, setActiveRequest] =
     useState<string | null>(null)
 
   const [status, setStatus] =
@@ -64,7 +93,20 @@ export default function CvImprovementsStage() {
           return
         }
 
-        setChanges(payload.changes || [])
+        const loaded =
+          payload.changes || []
+
+        setChanges(loaded)
+
+        const loadedAnswers:
+          AnswersByChange = {}
+
+        for (const change of loaded) {
+          loadedAnswers[change.id] =
+            change.confirmationAnswers || {}
+        }
+
+        setAnswers(loadedAnswers)
       } catch {
         setStatus(
           "Could not load CV improvements."
@@ -77,11 +119,60 @@ export default function CvImprovementsStage() {
     void loadChanges()
   }, [])
 
-  const handleDecision = async (
+  const replaceChange = (
     changeId: string,
-    action: "approved" | "rejected"
+    replacement?: ChangeRecord
   ) => {
-    setDecisionLoading(changeId)
+    if (!replacement) {
+      return
+    }
+
+    setChanges((current) =>
+      current.map((change) =>
+        change.id === changeId
+          ? replacement
+          : change
+      )
+    )
+  }
+
+  const setAnswer = (
+    changeId: string,
+    questionId: string,
+    value: string
+  ) => {
+    setAnswers((current) => ({
+      ...current,
+      [changeId]: {
+        ...(current[changeId] || {}),
+        [questionId]: value,
+      },
+    }))
+  }
+
+  const handleConfirmation = async (
+    change: ChangeRecord
+  ) => {
+    const changeAnswers =
+      answers[change.id] || {}
+
+    const unanswered =
+      change.confirmationQuestions.filter(
+        (question) =>
+          !String(
+            changeAnswers[question.id] || ""
+          ).trim()
+      )
+
+    if (unanswered.length > 0) {
+      setStatus(
+        `Answer all ${change.confirmationQuestions.length} ` +
+          "factual questions before reconstruction."
+      )
+      return
+    }
+
+    setActiveRequest(change.id)
     setStatus("")
 
     try {
@@ -90,7 +181,63 @@ export default function CvImprovementsStage() {
         {
           method: "POST",
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            changeId: change.id,
+            action: "confirm",
+            answers: changeAnswers,
+          }),
+        }
+      )
+
+      const payload =
+        (await response.json().catch(
+          () => ({})
+        )) as ChangesPayload
+
+      if (!response.ok) {
+        setStatus(
+          payload.error ||
+            "Could not reconstruct the CV entry."
+        )
+        return
+      }
+
+      replaceChange(
+        change.id,
+        payload.change
+      )
+
+      setStatus(
+        "Your answers were verified and a new reconstruction was prepared. Review it before approval."
+      )
+    } catch {
+      setStatus(
+        "Could not reconstruct the CV entry."
+      )
+    } finally {
+      setActiveRequest(null)
+    }
+  }
+
+  const handleDecision = async (
+    changeId: string,
+    action: "approved" | "rejected"
+  ) => {
+    setActiveRequest(changeId)
+    setStatus("")
+
+    try {
+      const response = await fetch(
+        "/api/career/cv-changes",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
           },
           credentials: "include",
           body: JSON.stringify({
@@ -108,20 +255,14 @@ export default function CvImprovementsStage() {
       if (!response.ok) {
         setStatus(
           payload.error ||
-            "The CV improvement decision could not be saved."
+            "The CV decision could not be saved."
         )
         return
       }
 
-      setChanges((current) =>
-        current.map((change) =>
-          change.id === changeId
-            ? payload.change || {
-                ...change,
-                userApprovalStatus: action,
-              }
-            : change
-        )
+      replaceChange(
+        changeId,
+        payload.change
       )
 
       setStatus(
@@ -131,61 +272,74 @@ export default function CvImprovementsStage() {
       )
     } catch {
       setStatus(
-        "The CV improvement decision could not be saved."
+        "The CV decision could not be saved."
       )
     } finally {
-      setDecisionLoading(null)
+      setActiveRequest(null)
     }
   }
 
   const handleContinue = async () => {
-    const pending =
+    const unresolved =
       changes.filter(
         (change) =>
-          change.userApprovalStatus === "pending"
+          change.userApprovalStatus ===
+          "pending"
       ).length
 
-    if (pending > 0) {
+    if (unresolved > 0) {
       setStatus(
-        `Review the remaining ${pending} ` +
-          `improvement${pending === 1 ? "" : "s"} ` +
+        `Complete or reject the remaining ${unresolved} ` +
+          `review${unresolved === 1 ? "" : "s"} ` +
           "before continuing."
       )
       return
     }
 
-    const response = await fetch(
-      "/api/career/stage-transition",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          toStage: "career-summary",
-        }),
-      }
-    )
+    setActiveRequest("continue")
+    setStatus("")
 
-    if (response.ok) {
-      router.push(
-        "/career-activation/career-summary"
+    try {
+      const response = await fetch(
+        "/api/career/stage-transition",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            toStage: "career-summary",
+          }),
+        }
       )
-      return
-    }
 
-    const payload =
-      (await response.json().catch(
-        () => ({})
-      )) as {
-        error?: string
+      if (response.ok) {
+        router.push(
+          "/career-activation/career-summary"
+        )
+        return
       }
 
-    setStatus(
-      payload.error ||
+      const payload =
+        (await response.json().catch(
+          () => ({})
+        )) as {
+          error?: string
+        }
+
+      setStatus(
+        payload.error ||
+          "Could not continue to the career summary."
+      )
+    } catch {
+      setStatus(
         "Could not continue to the career summary."
-    )
+      )
+    } finally {
+      setActiveRequest(null)
+    }
   }
 
   if (loading) {
@@ -222,7 +376,8 @@ export default function CvImprovementsStage() {
 
         <p>
           Review each evidence-based suggestion.
-          Nothing is applied without your approval.
+          Uncertain duties must be confirmed before
+          stronger wording can be approved.
         </p>
 
         {changes.length === 0 ? (
@@ -234,20 +389,39 @@ export default function CvImprovementsStage() {
               marginBottom: 20,
             }}
           >
-            <p>
-              No evidence-based improvements were
-              generated. Return to CV Intake if the
-              profile requires more information.
-            </p>
+            No evidence-based improvements were
+            generated. Return to CV Intake if more
+            career information is needed.
           </div>
         ) : (
           <div style={{ marginBottom: 20 }}>
             {changes.map((change) => {
-              const deciding =
-                decisionLoading === change.id
+              const busy =
+                activeRequest === change.id
+
+              const needsConfirmation =
+                change.confirmationStatus ===
+                  "needs_confirmation" &&
+                change.userApprovalStatus ===
+                  "pending"
+
+              const confirmed =
+                change.confirmationStatus ===
+                "confirmed"
+
+              const borderColor =
+                change.userApprovalStatus ===
+                "approved"
+                  ? "#10b981"
+                  : change.userApprovalStatus ===
+                      "rejected"
+                    ? "#ef4444"
+                    : needsConfirmation
+                      ? "#f59e0b"
+                      : "#475569"
 
               return (
-                <div
+                <section
                   key={change.id}
                   style={{
                     background: "#0b1220",
@@ -255,13 +429,7 @@ export default function CvImprovementsStage() {
                     borderRadius: 6,
                     marginBottom: 12,
                     border:
-                      change.userApprovalStatus ===
-                      "approved"
-                        ? "1px solid #10b981"
-                        : change.userApprovalStatus ===
-                            "rejected"
-                          ? "1px solid #ef4444"
-                          : "1px solid #475569",
+                      `1px solid ${borderColor}`,
                   }}
                 >
                   <div
@@ -276,7 +444,8 @@ export default function CvImprovementsStage() {
                     <h4
                       style={{
                         margin: 0,
-                        textTransform: "capitalize",
+                        textTransform:
+                          "capitalize",
                       }}
                     >
                       {change.section.replaceAll(
@@ -288,14 +457,19 @@ export default function CvImprovementsStage() {
                     <span
                       style={{
                         fontSize: 12,
-                        color: "#94a3b8",
+                        color: needsConfirmation
+                          ? "#f59e0b"
+                          : "#94a3b8",
                       }}
                     >
-                      Evidence confidence:{" "}
-                      {Math.round(
-                        change.confidence * 100
-                      )}
-                      %
+                      {needsConfirmation
+                        ? "Needs confirmation"
+                        : `Evidence confidence: ${
+                            Math.round(
+                              change.confidence *
+                                100
+                            )
+                          }%`}
                     </span>
                   </div>
 
@@ -303,7 +477,6 @@ export default function CvImprovementsStage() {
                     style={{
                       fontSize: 12,
                       color: "#cbd5e1",
-                      marginBottom: 8,
                     }}
                   >
                     {change.reason}
@@ -324,7 +497,7 @@ export default function CvImprovementsStage() {
                         color: "#94a3b8",
                       }}
                     >
-                      Original
+                      Original CV evidence
                     </p>
 
                     <p
@@ -337,24 +510,32 @@ export default function CvImprovementsStage() {
                       {change.originalText}
                     </p>
 
-                    <p
-                      style={{
-                        margin: "12px 0 6px",
-                        color: "#10b981",
-                      }}
-                    >
-                      Proposed
-                    </p>
+                    {!needsConfirmation && (
+                      <>
+                        <p
+                          style={{
+                            margin:
+                              "12px 0 6px",
+                            color: "#10b981",
+                          }}
+                        >
+                          {confirmed
+                            ? "Verified reconstruction"
+                            : "Proposed"}
+                        </p>
 
-                    <p
-                      style={{
-                        margin: 0,
-                        color: "#f8fafc",
-                        whiteSpace: "pre-wrap",
-                      }}
-                    >
-                      {change.proposedText}
-                    </p>
+                        <p
+                          style={{
+                            margin: 0,
+                            color: "#f8fafc",
+                            whiteSpace:
+                              "pre-wrap",
+                          }}
+                        >
+                          {change.proposedText}
+                        </p>
+                      </>
+                    )}
 
                     <details
                       style={{
@@ -377,10 +558,129 @@ export default function CvImprovementsStage() {
                           whiteSpace: "pre-wrap",
                         }}
                       >
-                        {change.sourceEvidence}
+                        {confirmed &&
+                        change.confirmedEvidence
+                          ? change.confirmedEvidence
+                          : change.sourceEvidence}
                       </p>
                     </details>
                   </div>
+
+                  {needsConfirmation && (
+                    <div
+                      style={{
+                        padding: 12,
+                        marginBottom: 12,
+                        background: "#172033",
+                        borderRadius: 6,
+                      }}
+                    >
+                      <strong
+                        style={{
+                          color: "#fbbf24",
+                        }}
+                      >
+                        Confirm what you actually did
+                      </strong>
+
+                      <p
+                        style={{
+                          fontSize: 12,
+                          color: "#cbd5e1",
+                        }}
+                      >
+                        These answers become evidence.
+                        Do not include duties you did
+                        not personally perform.
+                      </p>
+
+                      {change.confirmationQuestions.map(
+                        (question) => (
+                          <label
+                            key={question.id}
+                            style={{
+                              display: "block",
+                              marginTop: 12,
+                              fontSize: 13,
+                              fontWeight: 600,
+                            }}
+                          >
+                            {question.prompt}
+
+                            <textarea
+                              value={
+                                answers[
+                                  change.id
+                                ]?.[
+                                  question.id
+                                ] || ""
+                              }
+                              disabled={busy}
+                              maxLength={500}
+                              rows={3}
+                              onChange={(event) =>
+                                setAnswer(
+                                  change.id,
+                                  question.id,
+                                  event.target
+                                    .value
+                                )
+                              }
+                              style={{
+                                display:
+                                  "block",
+                                width: "100%",
+                                marginTop: 6,
+                                padding: 10,
+                                color: "#f8fafc",
+                                background:
+                                  "#0b1220",
+                                border:
+                                  "1px solid #64748b",
+                                borderRadius: 4,
+                                resize:
+                                  "vertical",
+                                boxSizing:
+                                  "border-box",
+                              }}
+                            />
+                          </label>
+                        )
+                      )}
+
+                      <button
+                        type="button"
+                        disabled={
+                          activeRequest !== null
+                        }
+                        onClick={() =>
+                          void handleConfirmation(
+                            change
+                          )
+                        }
+                        style={{
+                          width: "100%",
+                          marginTop: 12,
+                          padding: "10px 12px",
+                          background: busy
+                            ? "#475569"
+                            : "#f59e0b",
+                          color: "#111827",
+                          border: "none",
+                          borderRadius: 4,
+                          fontWeight: 700,
+                          cursor:
+                            activeRequest !== null
+                              ? "not-allowed"
+                              : "pointer",
+                        }}
+                      >
+                        {busy
+                          ? "Reconstructing..."
+                          : "Confirm details and reconstruct"}
+                      </button>
+                    </div>
+                  )}
 
                   {change.userApprovalStatus ===
                     "pending" && (
@@ -390,42 +690,43 @@ export default function CvImprovementsStage() {
                         gap: 8,
                       }}
                     >
-                      <button
-                        type="button"
-                        disabled={
-                          decisionLoading !== null
-                        }
-                        onClick={() =>
-                          void handleDecision(
-                            change.id,
-                            "approved"
-                          )
-                        }
-                        style={{
-                          flex: 1,
-                          padding: "8px 12px",
-                          background: deciding
-                            ? "#475569"
-                            : "#10b981",
-                          color: "white",
-                          border: "none",
-                          borderRadius: 4,
-                          cursor:
-                            decisionLoading !== null
-                              ? "not-allowed"
-                              : "pointer",
-                          fontSize: 14,
-                        }}
-                      >
-                        {deciding
-                          ? "Saving..."
-                          : "Approve"}
-                      </button>
+                      {!needsConfirmation && (
+                        <button
+                          type="button"
+                          disabled={
+                            activeRequest !== null
+                          }
+                          onClick={() =>
+                            void handleDecision(
+                              change.id,
+                              "approved"
+                            )
+                          }
+                          style={{
+                            flex: 1,
+                            padding: "9px 12px",
+                            background: busy
+                              ? "#475569"
+                              : "#10b981",
+                            color: "white",
+                            border: "none",
+                            borderRadius: 4,
+                            cursor:
+                              activeRequest !== null
+                                ? "not-allowed"
+                                : "pointer",
+                          }}
+                        >
+                          {busy
+                            ? "Saving..."
+                            : "Approve"}
+                        </button>
+                      )}
 
                       <button
                         type="button"
                         disabled={
-                          decisionLoading !== null
+                          activeRequest !== null
                         }
                         onClick={() =>
                           void handleDecision(
@@ -435,23 +736,24 @@ export default function CvImprovementsStage() {
                         }
                         style={{
                           flex: 1,
-                          padding: "8px 12px",
-                          background: deciding
+                          padding: "9px 12px",
+                          background: busy
                             ? "#475569"
                             : "#ef4444",
                           color: "white",
                           border: "none",
                           borderRadius: 4,
                           cursor:
-                            decisionLoading !== null
+                            activeRequest !== null
                               ? "not-allowed"
                               : "pointer",
-                          fontSize: 14,
                         }}
                       >
-                        {deciding
+                        {busy
                           ? "Saving..."
-                          : "Reject"}
+                          : needsConfirmation
+                            ? "Reject this suggestion"
+                            : "Reject"}
                       </button>
                     </div>
                   )}
@@ -478,42 +780,77 @@ export default function CvImprovementsStage() {
                         : "Rejected"}
                     </div>
                   )}
-                </div>
+                </section>
               )
             })}
           </div>
         )}
 
-        <button
-          type="button"
-          disabled={decisionLoading !== null}
-          onClick={() =>
-            void handleContinue()
-          }
+        <div
           style={{
-            padding: "12px 24px",
-            background:
-              decisionLoading !== null
-                ? "#475569"
-                : "#3b82f6",
-            color: "white",
-            border: "none",
-            borderRadius: 6,
-            fontSize: 16,
-            fontWeight: 600,
-            cursor:
-              decisionLoading !== null
-                ? "not-allowed"
-                : "pointer",
-            width: "100%",
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
           }}
         >
-          Continue to Career Summary
-        </button>
+          <button
+            type="button"
+            disabled={activeRequest !== null}
+            onClick={() =>
+              router.push(
+                "/career-activation/cv-intake"
+              )
+            }
+            style={{
+              padding: "12px 20px",
+              background: "#334155",
+              color: "white",
+              border: "none",
+              borderRadius: 6,
+              cursor:
+                activeRequest !== null
+                  ? "not-allowed"
+                  : "pointer",
+            }}
+          >
+            Back to CV Intake
+          </button>
+
+          <button
+            type="button"
+            disabled={activeRequest !== null}
+            onClick={() =>
+              void handleContinue()
+            }
+            style={{
+              flex: 1,
+              minWidth: 240,
+              padding: "12px 24px",
+              background:
+                activeRequest !== null
+                  ? "#475569"
+                  : "#3b82f6",
+              color: "white",
+              border: "none",
+              borderRadius: 6,
+              fontSize: 16,
+              fontWeight: 600,
+              cursor:
+                activeRequest !== null
+                  ? "not-allowed"
+                  : "pointer",
+            }}
+          >
+            {activeRequest === "continue"
+              ? "Continuing..."
+              : "Continue to Career Summary"}
+          </button>
+        </div>
 
         {status && (
           <div
             role="status"
+            aria-live="polite"
             style={{
               marginTop: 16,
               padding: 12,
