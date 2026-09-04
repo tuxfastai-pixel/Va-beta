@@ -3,10 +3,22 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 
+type SkillEvidence = {
+  skill?: string
+  evidence?: string
+  sourceSection?: string
+  evidenceType?: string
+  confidence?: number
+  requiresConfirmation?: boolean
+}
+
 type StructuredProfile = {
   fullName?: string
   professionalSummary?: string
   skills?: unknown
+  skillEvidence?: SkillEvidence[]
+  skillsNeedingConfirmation?: SkillEvidence[]
+  skillExtractionMode?: string
   workExperience?: unknown
   missingFields?: string[]
   followUpQuestions?: string[]
@@ -84,6 +96,98 @@ export default function ProfileReviewStage() {
                   ? structured.skills.join(", ")
                   : "None identified"}
               </p>
+              {structured?.skillExtractionMode && (
+                <p>
+                  <strong>Skill extraction:</strong>{" "}
+                  {structured.skillExtractionMode === "ai"
+                    ? "AI evidence review"
+                    : "CV skills section"}
+                </p>
+              )}
+
+              {Array.isArray(
+                structured?.skillEvidence
+              ) &&
+                structured.skillEvidence.length > 0 && (
+                  <details
+                    style={{
+                      marginBottom: 16,
+                    }}
+                  >
+                    <summary
+                      style={{
+                        cursor: "pointer",
+                        color: "#93c5fd",
+                      }}
+                    >
+                      View supporting skill evidence
+                    </summary>
+                    <ul>
+                      {structured.skillEvidence.map(
+                        (item, index) => (
+                          <li
+                            key={`${item.skill || "skill"}-${index}`}
+                            style={{
+                              marginBottom: 8,
+                            }}
+                          >
+                            <strong>
+                              {item.skill ||
+                                "Unnamed skill"}
+                            </strong>
+                            {item.evidence && (
+                              <>
+                                {": "}
+                                {item.evidence}
+                              </>
+                            )}
+                          </li>
+                        )
+                      )}
+                    </ul>
+                  </details>
+                )}
+
+              {Array.isArray(
+                structured?.skillsNeedingConfirmation
+              ) &&
+                structured.skillsNeedingConfirmation
+                  .length > 0 && (
+                  <div
+                    style={{
+                      marginBottom: 16,
+                      padding: 12,
+                      border:
+                        "1px solid #f59e0b",
+                      borderRadius: 6,
+                      background: "#1c1917",
+                    }}
+                  >
+                    <strong
+                      style={{
+                        color: "#fbbf24",
+                      }}
+                    >
+                      Potential skills requiring
+                      confirmation
+                    </strong>
+                    <ul>
+                      {structured.skillsNeedingConfirmation.map(
+                        (item, index) => (
+                          <li
+                            key={`${item.skill || "pending"}-${index}`}
+                          >
+                            {item.skill}
+                            {item.evidence
+                              ? ` — Evidence: ${item.evidence}`
+                              : ""}
+                          </li>
+                        )
+                      )}
+                    </ul>
+                  </div>
+                )}
+
               <p>
                 <strong>Work Experience:</strong>{" "}
                 {Array.isArray(structured?.workExperience)

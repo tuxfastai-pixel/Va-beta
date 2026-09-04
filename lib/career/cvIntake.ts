@@ -1,3 +1,8 @@
+import type {
+  SkillEvidence,
+  SkillExtractionResult,
+} from "@/lib/career/cvSkillExtraction"
+
 export type CvInputMode = "upload" | "paste" | "build_from_onboarding" | "continue_without_cv"
 
 export type StructuredCv = {
@@ -9,6 +14,9 @@ export type StructuredCv = {
   workExperience: string[]
   projects: string[]
   skills: string[]
+  skillEvidence: SkillEvidence[]
+  skillsNeedingConfirmation: SkillEvidence[]
+  skillExtractionMode: "deterministic" | "ai"
   softwareTools: string[]
   languages: string[]
   achievements: string[]
@@ -51,7 +59,7 @@ function extractSection(
     }
 
     if (active) {
-      collected.push(line.replace(/^[-*ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢]\s*/, "").trim())
+      collected.push(line.replace(/^[-*ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢]\s*/, "").trim())
     }
   }
 
@@ -151,7 +159,14 @@ function normalizeSkillEntries(
     const key =
       cleaned.toLowerCase()
 
-    if (!cleaned || seen.has(key)) {
+    const proficiencyOnly =
+      /^(advanced|solid|subject matter(?: expert)?|expert|sme|intermediate|beginner|basic|good|excellent|fair|average)(?:\s*\(sme\))?$/i
+
+    if (
+      !cleaned ||
+      proficiencyOnly.test(cleaned) ||
+      seen.has(key)
+    ) {
       continue
     }
 
@@ -173,7 +188,7 @@ function groupWorkExperience(
   entries: string[]
 ): string[] {
   const labelPattern =
-    /^(company(?:\s+name)?|employer|position\s+held|position|job\s+title|responsibilit(?:y|ies)|duties|employment\s+period|employment\s+dates|period|duration|dates)\s*:?\s*(.*)$/i
+    /^(?:\d+[.)]\s*)?(company(?:\s+name)?|employer|position\s+held|position|job\s+title|responsibilit(?:y|ies)|duties|employment\s+period|employment\s+dates|period|duration|dates)\s*:?\s*(.*)$/i
 
   const hasStructuredLabels =
     entries.some((entry) =>
@@ -271,6 +286,14 @@ function groupWorkExperience(
       entry.replace(/\s+/g, " ").trim()
 
     if (!cleaned) {
+      continue
+    }
+
+    if (
+      /^(full[- ]?time|part[- ]?time)$/i.test(
+        cleaned
+      )
+    ) {
       continue
     }
 
@@ -467,6 +490,9 @@ export function structureCvInput(input: {
     workExperience,
     projects,
     skills,
+    skillEvidence: [],
+    skillsNeedingConfirmation: [],
+    skillExtractionMode: "deterministic",
     softwareTools,
     languages,
     achievements,
@@ -480,6 +506,43 @@ export function structureCvInput(input: {
 
   structured.followUpQuestions = targetedFollowUps(structured)
   return structured
+}
+
+export function mergeSkillExtraction(
+  structured: StructuredCv,
+  extraction: SkillExtractionResult
+): StructuredCv {
+  const combinedSkills =
+    normalizeSkillEntries([
+      ...structured.skills,
+      ...extraction.confirmedSkills,
+    ])
+
+  const next: StructuredCv = {
+    ...structured,
+    skills: combinedSkills,
+    skillEvidence: extraction.evidence,
+    skillsNeedingConfirmation:
+      extraction.pendingSkills,
+    skillExtractionMode: extraction.mode,
+    missingFields:
+      combinedSkills.length > 0
+        ? structured.missingFields.filter(
+            (field) => field !== "skills"
+          )
+        : Array.from(
+            new Set([
+              ...structured.missingFields,
+              "skills",
+            ])
+          ),
+    followUpQuestions: [],
+  }
+
+  next.followUpQuestions =
+    targetedFollowUps(next)
+
+  return next
 }
 
 export function buildCvFromOnboardingAnswers(input: {

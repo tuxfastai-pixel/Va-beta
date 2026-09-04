@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSessionUser } from "@/lib/auth/sessionUser"
-import { buildCvFromOnboardingAnswers, structureCvInput, type CvInputMode } from "@/lib/career/cvIntake"
+import {
+  buildCvFromOnboardingAnswers,
+  mergeSkillExtraction,
+  structureCvInput,
+  type CvInputMode,
+} from "@/lib/career/cvIntake"
+import {
+  extractSkillsFromCv,
+} from "@/lib/career/cvSkillExtraction"
 import { supabaseServer } from "@/lib/supabaseServer"
 
 export const dynamic = "force-dynamic"
@@ -48,7 +56,7 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const structured = structureCvInput({
+  let structured = structureCvInput({
     mode,
     rawText: text,
     onboardingFallback: {
@@ -59,6 +67,35 @@ export async function POST(req: NextRequest) {
       remoteReadiness: Number((activation?.international_readiness as { remoteReadinessScore?: number } | null)?.remoteReadinessScore || 60),
     },
   })
+
+  if (
+    text &&
+    (
+      mode === "upload" ||
+      mode === "paste"
+    )
+  ) {
+    try {
+      const extraction =
+        await extractSkillsFromCv({
+          rawText: text,
+          userId: session.userId,
+        })
+
+      structured =
+        mergeSkillExtraction(
+          structured,
+          extraction
+        )
+    } catch (error) {
+      console.error(
+        "CV skill extraction failed:",
+        error instanceof Error
+          ? error.message
+          : "Unknown extraction error"
+      )
+    }
+  }
 
   const profileId = profileIdFor(session.userId)
   const payload = {
