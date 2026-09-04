@@ -6,6 +6,7 @@ import {
   generateReEngagementMessage,
 } from "@/lib/retainer/retainerEngine";
 import { sendNotification } from "@/lib/notifications/email";
+import { orchestrateNotification, type SystemPressureState } from "@/lib/ui/notificationOrchestrator";
 
 type ClientRow = {
   id: string;
@@ -57,24 +58,31 @@ async function logInteraction(
   client.message_count = (client.message_count ?? 0) + 1;
 }
 
-async function createClientNotification(
-  client: ClientRow,
-  type: string,
-  title: string,
-  message: string,
-  priority: "low" | "normal" | "high" = "normal"
-): Promise<void> {
-  await supabaseServer.from("client_notifications").insert({
-    client_id: client.id,
-    notification_type: type,
-    priority,
-    title,
-    message,
-    payload: {
-      source: "account_manager",
-      score: client.score,
-      tier: client.score_tier,
-    },
+function mapUserSignalsToPressureState(input: {
+  safeMode?: boolean | null;
+  systemPaused?: boolean | null;
+  autonomousMode?: boolean | null;
+  trusted?: boolean | null;
+}): SystemPressureState {
+  if (input.systemPaused) return "locked";
+  if (input.safeMode) return "recovery";
+  if (input.autonomousMode && input.trusted) return "accelerated";
+  if (input.autonomousMode) return "stabilizing";
+  return "balanced";
+}
+
+async function getUserPressureState(userId: string): Promise<SystemPressureState> {
+  const { data } = await supabaseServer
+    .from("users")
+    .select("safe_mode, system_paused, autonomous_mode, trusted")
+    .eq("id", userId)
+    .maybeSingle();
+
+  return mapUserSignalsToPressureState({
+    safeMode: data?.safe_mode,
+    systemPaused: data?.system_paused,
+    autonomousMode: data?.autonomous_mode,
+    trusted: data?.trusted,
   });
 }
 
@@ -103,9 +111,28 @@ async function sendMessageToClient(
   type: string,
   title: string,
   message: string,
-  priority: "low" | "normal" | "high" = "normal"
+  priority: "low" | "normal" | "high" = "normal",
+  pressureState: SystemPressureState = "balanced"
 ): Promise<boolean> {
-  await createClientNotification(client, type, title, message, priority);
+  const orchestration = await orchestrateNotification(
+    {
+      userId: client.id,
+      type,
+      priority,
+      title,
+      message,
+      metadata: {
+        source: "account_manager",
+        score: client.score,
+        tier: client.score_tier,
+      },
+    },
+    pressureState
+  );
+
+  if (!orchestration.scheduled || orchestration.decision.action === "suppress") {
+    return false;
+  }
 
   if (!client.email) {
     console.warn(`Account manager: no email for client ${client.id}, saved in-app notification only`);
@@ -113,7 +140,11 @@ async function sendMessageToClient(
   }
 
   try {
-    await sendNotification(client.email, title, message);
+    await sendNotification(
+      client.email,
+      orchestration.transformedNotification.title,
+      orchestration.transformedNotification.message
+    );
   } catch (err) {
     console.error(`Failed to send message to ${client.email}:`, err);
   }
@@ -123,13 +154,16 @@ async function sendMessageToClient(
 
 // ── Handlers per tier ──────────────────────────────────────────────────────────
 
-async function handleVIPClient(client: ClientRow, userId: string): Promise<boolean> {
+async function handleVIPClient(client: ClientRow, userId: string, pressureState: SystemPressureState): Promise<boolean> {
   // Retainer pitch if not already on retainer
   if (!client.is_retainer) {
     const alreadySent = await recentlyContacted(client.id, "retainer_pitch", 14);
     if (!alreadySent) {
       const pitch = generateRetainerPitch(client.name);
-      await sendMessageToClient(client, "retainer_pitch", "Retainer support option", pitch, "high");
+      const delivered = await sendMessageToClient(client, "retainer_pitch", "Retainer support option", pitch, "high", pressureState);
+      if (!delivered) {
+        return false;
+      }
       await logInteraction(client, userId, "retainer_pitch", pitch);
       console.log(`💌 Retainer pitch sent to VIP client ${client.name || client.id}`);
       return true;
@@ -140,7 +174,10 @@ async function handleVIPClient(client: ClientRow, userId: string): Promise<boole
   const alreadyCheckedIn = await recentlyContacted(client.id, "checkin", 7);
   if (!alreadyCheckedIn) {
     const msg = `Hi ${client.name || "there"},\n\nJust checking in — I'm here if you need anything or if there's something new I can help with. Happy to jump on any tasks when you're ready 👍`;
-    await sendMessageToClient(client, "checkin", "Checking in", msg);
+    const delivered = await sendMessageToClient(client, "checkin", "Checking in", msg, "normal", pressureState);
+    if (!delivered) {
+      return false;
+    }
     await logInteraction(client, userId, "checkin", msg);
     console.log(`📬 VIP check-in sent to ${client.name || client.id}`);
     return true;
@@ -149,12 +186,15 @@ async function handleVIPClient(client: ClientRow, userId: string): Promise<boole
   return false;
 }
 
-async function handleGrowthClient(client: ClientRow, userId: string): Promise<boolean> {
+async function handleGrowthClient(client: ClientRow, userId: string, pressureState: SystemPressureState): Promise<boolean> {
   // Check-in every 5 days
   const alreadyContacted = await recentlyContacted(client.id, "checkin", 5);
   if (!alreadyContacted) {
     const msg = `Hi ${client.name || "there"},\n\nJust checking in — I'm available if you need help with anything new or want to speed up ongoing work.`;
-    await sendMessageToClient(client, "checkin", "Checking in", msg);
+    const delivered = await sendMessageToClient(client, "checkin", "Checking in", msg, "normal", pressureState);
+    if (!delivered) {
+      return false;
+    }
     await logInteraction(client, userId, "checkin", msg);
     console.log(`📬 Growth check-in sent to ${client.name || client.id}`);
     return true;
@@ -164,7 +204,10 @@ async function handleGrowthClient(client: ClientRow, userId: string): Promise<bo
   const alreadyUpsold = await recentlyContacted(client.id, "upsell", 14);
   if (!alreadyUpsold) {
     const msg = generateUpsellMessage(client.name);
-    await sendMessageToClient(client, "upsell", "More support available", msg);
+    const delivered = await sendMessageToClient(client, "upsell", "More support available", msg, "normal", pressureState);
+    if (!delivered) {
+      return false;
+    }
     await logInteraction(client, userId, "upsell", msg);
     console.log(`📈 Upsell sent to ${client.name || client.id}`);
     return true;
@@ -173,14 +216,17 @@ async function handleGrowthClient(client: ClientRow, userId: string): Promise<bo
   return false;
 }
 
-async function handleLowClient(client: ClientRow, userId: string): Promise<boolean> {
+async function handleLowClient(client: ClientRow, userId: string, pressureState: SystemPressureState): Promise<boolean> {
   // Only reach out if dormant for 7+ days
   if (daysSince(client.last_interaction) < 7) return false;
 
   const alreadyContacted = await recentlyContacted(client.id, "followup", 14);
   if (!alreadyContacted) {
     const msg = generateReEngagementMessage(client.name);
-    await sendMessageToClient(client, "followup", "Checking back in", msg, "low");
+    const delivered = await sendMessageToClient(client, "followup", "Checking back in", msg, "low", pressureState);
+    if (!delivered) {
+      return false;
+    }
     await logInteraction(client, userId, "followup", msg);
     console.log(`💤 Re-engagement sent to low client ${client.name || client.id}`);
     return true;
@@ -199,6 +245,8 @@ export async function runAccountManager(userId: string): Promise<{
   clientsProcessed: number;
   messagesSent: number;
 }> {
+  const pressureState = await getUserPressureState(userId);
+
   // Step 1: Rescore all clients
   await rescoreAllClients(userId);
 
@@ -239,11 +287,11 @@ export async function runAccountManager(userId: string): Promise<{
 
     try {
       if (tier === "vip") {
-        if (await handleVIPClient(client, userId)) {
+        if (await handleVIPClient(client, userId, pressureState)) {
           messagesSent++;
         }
       } else if (tier === "high") {
-        if (await handleGrowthClient(client, userId)) {
+        if (await handleGrowthClient(client, userId, pressureState)) {
           messagesSent++;
         }
       } else if (tier === "medium") {
@@ -251,12 +299,15 @@ export async function runAccountManager(userId: string): Promise<{
         const alreadyUpsold = await recentlyContacted(client.id, "upsell", 10);
         if (!alreadyUpsold) {
           const msg = generateUpsellMessage(client.name);
-          await sendMessageToClient(client, "upsell", "More support available", msg);
+          const delivered = await sendMessageToClient(client, "upsell", "More support available", msg, "normal", pressureState);
+          if (!delivered) {
+            continue;
+          }
           await logInteraction(client, userId, "upsell", msg);
           messagesSent++;
         }
       } else {
-        if (await handleLowClient(client, userId)) {
+        if (await handleLowClient(client, userId, pressureState)) {
           messagesSent++;
         }
       }

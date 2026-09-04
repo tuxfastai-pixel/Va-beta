@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { buildInterviewPreparationSync } from "@/lib/assist/interviewPreparationSync";
 import { handleVoiceCommand, handleVoiceCommandModeSwitch } from "@/lib/voice/assistant";
 
 export async function POST(req: NextRequest) {
@@ -19,6 +20,20 @@ export async function POST(req: NextRequest) {
     }
 
     const result = handleVoiceCommand(command);
+
+    if (result.action === "interview_prep" && userId) {
+      const interviewPrep = await buildInterviewPreparationSync({
+        userId,
+        transcript: command,
+      });
+
+      return NextResponse.json({
+        action: result.action,
+        message: result.message,
+        interviewPrep,
+      });
+    }
+
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(

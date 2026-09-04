@@ -6,6 +6,7 @@ import {
   getGoalAchievements,
 } from "@/lib/autonomy/scaleEngine";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { getSessionUser } from "@/lib/auth/sessionUser";
 
 /**
  * GET /api/goals
@@ -13,6 +14,12 @@ import { supabaseServer } from "@/lib/supabaseServer";
  */
 export async function GET(req: NextRequest) {
   try {
+    const session = await getSessionUser();
+
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const userId = req.nextUrl.searchParams.get("userId");
     const goalType = req.nextUrl.searchParams.get("type") || "income";
 
@@ -21,6 +28,10 @@ export async function GET(req: NextRequest) {
         { error: "userId parameter required" },
         { status: 400 }
       );
+    }
+
+    if (userId !== session.userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const goal = await getUserGoal(userId, goalType);
@@ -55,6 +66,12 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
+    const session = await getSessionUser();
+
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await req.json();
     const { userId, targetAmount, goalType, options } = body;
 
@@ -63,6 +80,10 @@ export async function POST(req: NextRequest) {
         { error: "userId and targetAmount required" },
         { status: 400 }
       );
+    }
+
+    if (userId !== session.userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const goal = await createGoal(userId, targetAmount, goalType, options);
@@ -94,6 +115,12 @@ export async function POST(req: NextRequest) {
  */
 export async function PATCH(req: NextRequest) {
   try {
+    const session = await getSessionUser();
+
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await req.json();
     const { goalId, amountToAdd, update } = body;
 
@@ -102,6 +129,17 @@ export async function PATCH(req: NextRequest) {
         { error: "goalId required" },
         { status: 400 }
       );
+    }
+
+    const { data: ownedGoal, error: ownershipError } = await supabaseServer
+      .from("goals")
+      .select("id, user_id")
+      .eq("id", goalId)
+      .eq("user_id", session.userId)
+      .maybeSingle();
+
+    if (ownershipError || !ownedGoal) {
+      return NextResponse.json({ error: "Goal not found" }, { status: 404 });
     }
 
     // Update progress

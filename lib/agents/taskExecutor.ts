@@ -1,14 +1,10 @@
-import OpenAI from "openai";
 import { config as loadEnv } from "dotenv";
+import { executeModelRequest, extractTextFromCompletion } from "@/lib/ai/executeModelRequest";
 
 loadEnv({ path: ".env.local" });
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 export async function executeTask(task: { description?: string }) {
-  const response = await openai.chat.completions.create({
+  const response = await executeModelRequest({
     model: "gpt-4.1-mini",
     messages: [
       {
@@ -20,7 +16,10 @@ export async function executeTask(task: { description?: string }) {
         content: task.description || "",
       },
     ],
+    telemetry: {
+      module: "lib/agents/taskExecutor.ts",
+    },
   });
 
-  return response.choices[0].message.content;
+  return extractTextFromCompletion(response);
 }

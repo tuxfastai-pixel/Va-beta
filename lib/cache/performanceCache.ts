@@ -1,4 +1,4 @@
-import { redis } from "@/lib/redis";
+﻿import { redis } from "@/lib/redisSafe";
 
 type MemoryEntry = {
   value: string;

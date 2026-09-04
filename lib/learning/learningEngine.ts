@@ -1,4 +1,4 @@
-import { supabaseServer } from "@/lib/supabaseServer";
+﻿import { supabaseServer } from "@/lib/supabaseServer";
 
 export type LearningEvent = {
   id?: string;
@@ -12,6 +12,243 @@ export type AgentMemory = {
   best_proposal_style?: string;
   best_job_type?: string;
   avoid?: string[];
+  primary_identity?: string;
+  identity_shift?: number;
+  identity_strategy?: string;
+  identity_weights?: Array<{ identityLabel: string; weight: number; confidence: number; sampleSize: number }>;
+  profile_confidence_score?: number;
+  identity_stability_score?: number;
+  identity_adaptation_throttle?: number;
+  human_realism_score?: number;
+  reinforcement_aggressiveness?: number;
+  identity_cohesion?: {
+    score?: number;
+    consistency?: number;
+    overlap?: number;
+    believability?: number;
+    divergenceRisk?: number;
+    flags?: string[];
+    rationale?: string[];
+  };
+  primary_specialization?: string;
+  secondary_specialization?: string;
+  profile_variants?: Record<string, {
+    key: string;
+    label: string;
+    channel: string;
+    optimizedHeadline: string;
+    summary: string;
+    prioritizedKeywords: string[];
+    deploymentWeight: number;
+    appliedThrottle: number;
+  }>;
+  market_signal_intelligence?: {
+    risingNiches?: Array<Record<string, unknown>>;
+    improvingSalaries?: Array<Record<string, unknown>>;
+    weakeningPlatforms?: Array<Record<string, unknown>>;
+    saturatingCategories?: Array<Record<string, unknown>>;
+    recommendedProactiveShift?: string;
+  };
+  explainability?: {
+    whyIdentityChosen?: string[];
+    whyATSKeywordsChanged?: string[];
+    whyPositioningShifted?: string[];
+    whyConfidenceChanged?: string[];
+    governanceSummary?: string;
+  };
+  resume_intelligence?: {
+    updated_at?: string;
+    base_resume?: {
+      key: string;
+      title: string;
+      summary: string;
+      coreSkills: string[];
+      transferableStrengths: string[];
+      aiTooling: string[];
+      atsKeywords: string[];
+      honestyNotes: string[];
+      text: string;
+    };
+    niche_resumes?: Array<{
+      key: string;
+      title: string;
+      summary: string;
+      coreSkills: string[];
+      transferableStrengths: string[];
+      aiTooling: string[];
+      atsKeywords: string[];
+      honestyNotes: string[];
+      text: string;
+    }>;
+    variants?: Record<string, {
+      key: string;
+      sourceProfileVariant: string;
+      label: string;
+      headline: string;
+      text: string;
+      prioritizedKeywords: string[];
+      deploymentWeight: number;
+    }>;
+    evolution?: {
+      primaryVariant?: string;
+      confidence?: number;
+      rankedVariants?: Array<{
+        key: string;
+        proposals: number;
+        callbacks: number;
+        interviews: number;
+        wins: number;
+        callbackRate: number;
+        interviewRate: number;
+        conversionRate: number;
+        salaryLift: number;
+        score: number;
+      }>;
+      wordingHints?: string[];
+      orderingHints?: string[];
+      emphasisHints?: string[];
+    };
+    realism?: {
+      overall?: number;
+      throttle?: number;
+      warnings?: string[];
+      variants?: Array<{
+        key: string;
+        readability: number;
+        naturalness: number;
+        credibility: number;
+        cohesion: number;
+        score: number;
+        warnings: string[];
+      }>;
+    };
+    cohesion?: {
+      score?: number;
+      consistency?: number;
+      overlap?: number;
+      believability?: number;
+      divergenceRisk?: number;
+      flags?: string[];
+      rationale?: string[];
+    };
+    honesty_layer?: {
+      rule?: string;
+      disallowed?: string[];
+      guardrails?: string[];
+    };
+    explainability?: {
+      whyPrimaryVariant?: string;
+      whyChanged?: string;
+      realismWarnings?: string[];
+      wordingHints?: string[];
+      orderingHints?: string[];
+      emphasisHints?: string[];
+      cohesionWarnings?: string[];
+    };
+    primary_resume_variant?: string;
+    deployment_throttle?: number;
+    equilibrium_learning?: {
+      byPattern?: Record<string, {
+        attempts: number;
+        cumulativeScore: number;
+        averageScore: number;
+        interventions: number;
+      }>;
+      equilibriumScore?: number;
+      preferredMutationPatterns?: string[];
+      discouragedPatterns?: string[];
+      updatedAt?: string;
+    };
+    equilibrium_diagnostics?: {
+      timestamp?: string;
+      systemEmotionalState?: "Accelerated" | "Balanced" | "Stabilizing" | "Recovery" | "Locked";
+      tempo?: {
+        tempoMode?: "accelerated" | "balanced" | "stabilizing" | "recovery";
+        adaptationVelocity?: number;
+        mutationCooldownMs?: number;
+        explorationBreadth?: number;
+        stabilizationBias?: number;
+      };
+      inertia?: {
+        mutationResistance?: number;
+        maxAllowedDrift?: number;
+        inertiaState?: "fluid" | "anchored" | "locked";
+        identityLockPressure?: number;
+      };
+      gradient?: {
+        instabilityAcceleration?: number;
+        projectedStressWindow?: number;
+        warningGrowthRate?: number;
+        riskGrowthRate?: number;
+        stabilizationRequired?: boolean;
+      };
+      equilibrium?: {
+        equilibriumScore?: number;
+        preferredMutationPatterns?: string[];
+        discouragedPatterns?: string[];
+        stabilityEfficiencyRatio?: number;
+        recoveryFrequency?: number;
+      };
+    };
+    history?: Array<Record<string, unknown>>;
+  };
+  mutation_policy_memory?: {
+    updated_at?: string;
+    strategy_weighting?: {
+      mutation_pattern?: string;
+      selected_weight?: number;
+      preferred_patterns?: string[];
+      discouraged_patterns?: string[];
+    };
+    equilibrium_score?: number;
+    stability_efficiency_ratio?: number;
+    recovery_frequency?: number;
+  };
+  interview_prep_sync?: {
+    updated_at?: string;
+    primary_identity?: string;
+    primary_resume_variant?: string;
+    alignment_score?: number;
+    terminology?: string[];
+    workflow_hints?: string[];
+    meeting_stage?: string;
+    intent?: string;
+    drift?: {
+      risk_level?: "low" | "medium" | "high" | "critical";
+      risk_score?: number;
+      recruiter_suspicion_risk?: number;
+      flags?: string[];
+      summary?: string;
+      recommendation?: string;
+      readiness_by_domain?: Record<string, number>;
+      term_competency?: Array<{
+        term: string;
+        confidence: number;
+      }>;
+      diagnostics?: {
+        terminology_overlap?: number;
+        workflow_overlap?: number;
+        confidence_gap?: number;
+        hesitation_score?: number;
+        realism_inconsistency?: number;
+      };
+    };
+  };
+  positioning_memory?: {
+    last_updated_at?: string;
+    headlines?: Array<{ platform: string; headline: string }>;
+    summaries?: Array<{ platform: string; summary: string }>;
+    keywords?: Array<{ platform: string; keywords: string[] }>;
+    performance?: Array<{ identityLabel: string; proposalCount: number; callbackRate: number; conversionRate: number }>;
+    history?: Array<{
+      recorded_at: string;
+      primary_specialization: string;
+      primary_identity: string;
+      confidence_score: number;
+      market_focus: string;
+    }>;
+    market_positioning?: Record<string, unknown>;
+  };
 };
 
 function isMissingTable(error: { message?: string } | null | undefined, table: string) {

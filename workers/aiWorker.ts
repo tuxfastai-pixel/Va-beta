@@ -10,6 +10,7 @@ import { runBookkeepingWorker, runDocProcessingWorker } from "../lib/workers/cli
 import { calculateTaskFee } from "../lib/billing/feeEngine.ts";
 import { buildPaymentLinks } from "../lib/billing/paymentLinks.ts";
 import { sendNotification } from "../lib/notifications/email.ts";
+import { orchestrateNotification, type SystemPressureState } from "../lib/ui/notificationOrchestrator.ts";
 
 loadEnv({ path: ".env.local" });
 
@@ -68,9 +69,10 @@ async function sleepUntilWakeOrTimeout(ms: number) {
 }
 
 function startWakeQueueListener() {
-  const host = process.env.REDIS_HOST;
+  const host = process.env.REDIS_HOST?.trim();
 
-  if (!host) {
+  if (!host || host.includes("127.0.0.1") || host.includes("localhost")) {
+    console.log("🚫 Redis disabled (localhost or missing) - AI worker wake queue disabled");
     return;
   }
 
@@ -216,6 +218,34 @@ function isBillableTask(taskType: WorkerTaskType | "") {
   );
 }
 
+function mapClientSignalsToPressureState(input: {
+  safeMode?: boolean | null;
+  systemPaused?: boolean | null;
+  autonomousMode?: boolean | null;
+  trusted?: boolean | null;
+}): SystemPressureState {
+  if (input.systemPaused) return "locked";
+  if (input.safeMode) return "recovery";
+  if (input.autonomousMode && input.trusted) return "accelerated";
+  if (input.autonomousMode) return "stabilizing";
+  return "balanced";
+}
+
+async function getClientPressureState(clientId: string): Promise<SystemPressureState> {
+  const { data } = await supabase
+    .from("users")
+    .select("safe_mode, system_paused, autonomous_mode, trusted")
+    .eq("id", clientId)
+    .maybeSingle();
+
+  return mapClientSignalsToPressureState({
+    safeMode: data?.safe_mode,
+    systemPaused: data?.system_paused,
+    autonomousMode: data?.autonomous_mode,
+    trusted: data?.trusted,
+  });
+}
+
 async function createClientInvoiceAndNotification(task: WorkerTask) {
   const taskType = getTaskType(task);
   if (!isBillableTask(taskType)) {
@@ -277,25 +307,29 @@ async function createClientInvoiceAndNotification(task: WorkerTask) {
 
   const isHighValue = fee.amount_usd >= 500;
   const notificationType = isHighValue ? "high_value_alert" : "task_completed";
-
-  await supabase.from("client_notifications").insert({
-    client_id: clientId,
-    task_id: task.id,
-    notification_type: notificationType,
-    priority: isHighValue ? "high" : "normal",
-    title: isHighValue ? "High-value task completed" : "Task completed",
-    message: isHighValue
-      ? `Task ${task.id} completed. Priority invoice generated for ${fee.currency} ${fee.amount.toFixed(2)}.`
-      : `Task ${task.id} completed. Invoice generated for ${fee.currency} ${fee.amount.toFixed(2)}.`,
-    payload: {
-      amount: fee.amount,
-      amount_usd: fee.amount_usd,
-      currency: fee.currency,
-      stripe_checkout_url: paymentLinks.stripe_checkout_url,
-      paypal_checkout_url: paymentLinks.paypal_checkout_url,
-      task_type: taskType,
+  const pressureState = await getClientPressureState(clientId);
+  const orchestration = await orchestrateNotification(
+    {
+      userId: clientId,
+      type: notificationType,
+      priority: isHighValue ? "high" : "normal",
+      title: isHighValue ? "High-value task completed" : "Task completed",
+      message: isHighValue
+        ? `Task ${task.id} completed. Priority invoice generated for ${fee.currency} ${fee.amount.toFixed(2)}.`
+        : `Task ${task.id} completed. Invoice generated for ${fee.currency} ${fee.amount.toFixed(2)}.`,
+      metadata: {
+        task_id: task.id,
+        amount: fee.amount,
+        amount_usd: fee.amount_usd,
+        currency: fee.currency,
+        stripe_checkout_url: paymentLinks.stripe_checkout_url,
+        paypal_checkout_url: paymentLinks.paypal_checkout_url,
+        task_type: taskType,
+        source: "ai_worker",
+      },
     },
-  });
+    pressureState
+  );
 
   const { data: clientRow } = await supabase
     .from("users")
@@ -304,7 +338,7 @@ async function createClientInvoiceAndNotification(task: WorkerTask) {
     .maybeSingle();
 
   const email = String(clientRow?.email || "").trim();
-  if (email) {
+  if (email && orchestration.decision.action !== "suppress") {
     const subject = isHighValue ? "Priority alert: high-value task completed" : "Your task is complete";
     const body = [
       `Task ID: ${task.id}`,
@@ -312,6 +346,7 @@ async function createClientInvoiceAndNotification(task: WorkerTask) {
       `Invoice amount: ${fee.currency} ${fee.amount.toFixed(2)}`,
       paymentLinks.stripe_checkout_url ? `Stripe: ${paymentLinks.stripe_checkout_url}` : "Stripe: not configured",
       paymentLinks.paypal_checkout_url ? `PayPal: ${paymentLinks.paypal_checkout_url}` : "PayPal: not configured",
+      `Delivery mode: ${orchestration.decision.action}`,
     ].join("\n");
 
     await sendNotification(email, subject, body);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+﻿import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Button, StyleSheet, Text, View } from "react-native";
 import { fetchEarnings } from "../services/api";
 
@@ -7,7 +7,7 @@ type Props = {
 };
 
 export default function EarningsScreen({ userId }: Props) {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [byCurrency, setByCurrency] = useState<Record<string, number>>({});
   const [error, setError] = useState("");
@@ -27,8 +27,30 @@ export default function EarningsScreen({ userId }: Props) {
   }, [userId]);
 
   useEffect(() => {
-    void loadEarnings();
-  }, [loadEarnings]);
+    let cancelled = false;
+
+    void fetchEarnings(userId)
+      .then((result) => {
+        if (!cancelled) {
+          setTotal(Number(result.total || 0));
+          setByCurrency(result.byCurrency || {});
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load earnings");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
 
   return (
     <View style={styles.container}>

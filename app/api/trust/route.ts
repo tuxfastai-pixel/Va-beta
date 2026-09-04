@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSessionUser } from "@/lib/auth/sessionUser";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { calculateTrust, getTrustScore } from "@/lib/users/trust";
 
@@ -7,10 +8,20 @@ type ReputationRow = {
 };
 
 export async function GET(req: Request) {
+  const session = await getSessionUser();
+
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const userId = new URL(req.url).searchParams.get("user_id");
 
   if (!userId) {
     return NextResponse.json({ error: "user_id is required" }, { status: 400 });
+  }
+
+  if (userId !== session.userId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const trust = await getTrustScore(userId);

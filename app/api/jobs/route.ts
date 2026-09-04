@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { config as loadEnv } from "dotenv";
 import { getOrSetCache } from "@/lib/cache/performanceCache";
+import { getSessionUser } from "@/lib/auth/sessionUser";
 
 loadEnv({ path: ".env.local" });
 
@@ -17,6 +18,14 @@ type JobRow = {
 };
 
 export async function GET() {
+  const session = await getSessionUser();
+
+  if (!session?.userId) {
+    return Response.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
   const enriched = await getOrSetCache("job_queries:top_20", 60, async () => {
     const { data } = await supabase
       .from("jobs")

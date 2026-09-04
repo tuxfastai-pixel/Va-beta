@@ -1,18 +1,14 @@
-import OpenAI from "openai";
 import { config as loadEnv } from "dotenv";
+import { executeModelRequest, extractTextFromCompletion } from "@/lib/ai/executeModelRequest";
 
 loadEnv({ path: ".env.local" });
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 type WorkflowJob = {
   description?: string;
 };
 
 export async function buildWorkflow(job: WorkflowJob) {
-  const response = await openai.chat.completions.create({
+  const response = await executeModelRequest({
     model: "gpt-4.1-mini",
     messages: [
       {
@@ -24,7 +20,10 @@ export async function buildWorkflow(job: WorkflowJob) {
         content: `Job Description:\n\n${job.description || ""}\n\nReturn tasks list.`,
       },
     ],
+    telemetry: {
+      module: "lib/agents/workflowBuilder.ts",
+    },
   });
 
-  return response.choices[0].message.content;
+  return extractTextFromCompletion(response);
 }

@@ -1,22 +1,47 @@
-import OpenAI from "openai";
-import { Queue } from "bullmq";
 import { config as loadEnv } from "dotenv";
-import { enqueueDiscovery } from "../queues/discoveryQueue.ts";
-import { enqueueRanking } from "../queues/rankingQueue.ts";
 import { supabaseServer } from "../supabaseServer.ts";
+import { executeModelRequest, extractTextFromCompletion } from "@/lib/ai/executeModelRequest";
 
 loadEnv({ path: ".env.local" });
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const queuesEnabled = process.env.ENABLE_QUEUES === "true";
 
-const jobQueue = new Queue("career-tasks", {
-  connection: {
-    host: process.env.REDIS_HOST,
-    port: Number(process.env.REDIS_PORT ?? 6379),
-  },
-});
+if (!queuesEnabled) {
+  console.log("🚫 Queues disabled");
+}
+
+type PlannerQueue = {
+  add(name: string, payload: Record<string, unknown>): Promise<unknown>;
+};
+
+let jobQueue: PlannerQueue | null = null;
+
+async function getJobQueue(): Promise<PlannerQueue | null> {
+  if (!queuesEnabled) {
+    return null;
+  }
+
+  if (jobQueue) {
+    return jobQueue;
+  }
+
+  const redisHost = process.env.REDIS_HOST?.trim();
+  const redisPort = process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) : undefined;
+
+  if (!redisHost || redisHost === "127.0.0.1" || redisHost === "localhost") {
+    return null;
+  }
+
+  const { Queue } = await import("bullmq");
+  jobQueue = new Queue("career-tasks", {
+    connection: {
+      host: redisHost,
+      ...(redisPort ? { port: redisPort } : {}),
+    },
+  });
+
+  return jobQueue;
+}
 
 type PlannerUser = {
   id: string;
@@ -37,6 +62,15 @@ export async function runPlanner(user: PlannerUser) {
     },
   });
 
+  if (!queuesEnabled) {
+    return;
+  }
+
+  const [{ enqueueDiscovery }, { enqueueRanking }] = await Promise.all([
+    import("../queues/discoveryQueue.ts"),
+    import("../queues/rankingQueue.ts"),
+  ]);
+
   await enqueueDiscovery(user.id, markets);
   await enqueueRanking(user.id);
 }
@@ -46,7 +80,9 @@ export async function planner(user: PlannerUser) {
 }
 
 export async function plannerAgent(userId: string, resume: string, profile: string) {
-  const reasoning = await openai.chat.completions.create({
+  const queue = await getJobQueue();
+
+  const reasoning = await executeModelRequest({
     model: "gpt-4.1-mini",
     messages: [
       {
@@ -59,29 +95,33 @@ export async function plannerAgent(userId: string, resume: string, profile: stri
         content: `Resume:\n${resume}\n\nProfile:\n${profile}\n\nDecide tasks from this list:\nscanJobs\nanalyzeResume\nskillGapAnalysis`,
       },
     ],
+    telemetry: {
+      module: "lib/agents/plannerAgent.ts",
+      userId,
+    },
   });
 
-  const decision = reasoning.choices[0].message.content || "";
+  const decision = extractTextFromCompletion(reasoning);
 
   console.log("Planner decision:", decision);
 
-  if (decision.includes("scanJobs")) {
-    await jobQueue.add("scanJobs", {
+  if (queue && decision.includes("scanJobs")) {
+    await queue.add("scanJobs", {
       userId,
       resume,
       profile,
     });
   }
 
-  if (decision.includes("analyzeResume")) {
-    await jobQueue.add("analyzeResume", {
+  if (queue && decision.includes("analyzeResume")) {
+    await queue.add("analyzeResume", {
       userId,
       resume,
     });
   }
 
-  if (decision.includes("skillGapAnalysis")) {
-    await jobQueue.add("skillGapAnalysis", {
+  if (queue && decision.includes("skillGapAnalysis")) {
+    await queue.add("skillGapAnalysis", {
       userId,
       profile,
     });

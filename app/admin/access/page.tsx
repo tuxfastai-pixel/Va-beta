@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 interface AccessRequest {
   id: string;
@@ -17,22 +17,35 @@ export default function AdminAccessDashboard() {
   const [filter, setFilter] = useState<"pending" | "approved" | "rejected">("pending");
   const [processing, setProcessing] = useState<string | null>(null);
 
-  const fetchRequests = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`/api/admin/access-requests?status=${filter}`);
-      const data = await response.json();
-      setRequests(data.requests || []);
-    } catch (error) {
-      console.error("Fetch error:", error);
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch(`/api/admin/access-requests?status=${filter}`)
+      .then((response) => response.json())
+      .then((data) => {
+        if (!cancelled) {
+          setRequests(data.requests || []);
+        }
+      })
+      .catch((error) => {
+        console.error("Fetch error:", error);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [filter]);
 
-  useEffect(() => {
-    void fetchRequests();
-  }, [fetchRequests]);
+  function selectFilter(nextFilter: AccessRequest["status"]) {
+    setLoading(true);
+    setFilter(nextFilter);
+  }
+
 
   async function approveUser(email: string) {
     try {
@@ -48,7 +61,7 @@ export default function AdminAccessDashboard() {
 
       if (response.ok) {
         setRequests(requests.filter((r) => r.email !== email));
-        alert(`✅ User ${email} approved!`);
+        alert(`âœ… User ${email} approved!`);
       } else {
         alert("Failed to approve user");
       }
@@ -78,7 +91,7 @@ export default function AdminAccessDashboard() {
 
       if (response.ok) {
         setRequests(requests.filter((r) => r.email !== email));
-        alert(`❌ User ${email} rejected!`);
+        alert(`âŒ User ${email} rejected!`);
       } else {
         alert("Failed to reject user");
       }
@@ -92,11 +105,11 @@ export default function AdminAccessDashboard() {
 
   return (
     <div style={{ padding: "20px", fontFamily: "system-ui, sans-serif" }}>
-      <h1>🔐 Access Control Dashboard</h1>
+      <h1>ðŸ” Access Control Dashboard</h1>
 
       <div style={{ marginBottom: "20px" }}>
         <button
-          onClick={() => setFilter("pending")}
+          onClick={() => selectFilter("pending")}
           style={{
             marginRight: "10px",
             padding: "8px 16px",
@@ -107,10 +120,10 @@ export default function AdminAccessDashboard() {
             cursor: "pointer",
           }}
         >
-          📋 Pending ({requests.length})
+          ðŸ“‹ Pending ({requests.length})
         </button>
         <button
-          onClick={() => setFilter("approved")}
+          onClick={() => selectFilter("approved")}
           style={{
             marginRight: "10px",
             padding: "8px 16px",
@@ -121,10 +134,10 @@ export default function AdminAccessDashboard() {
             cursor: "pointer",
           }}
         >
-          ✅ Approved
+          âœ… Approved
         </button>
         <button
-          onClick={() => setFilter("rejected")}
+          onClick={() => selectFilter("rejected")}
           style={{
             padding: "8px 16px",
             backgroundColor: filter === "rejected" ? "#dc3545" : "#ccc",
@@ -134,7 +147,7 @@ export default function AdminAccessDashboard() {
             cursor: "pointer",
           }}
         >
-          ❌ Rejected
+          âŒ Rejected
         </button>
       </div>
 
@@ -187,7 +200,7 @@ export default function AdminAccessDashboard() {
                       cursor: "pointer",
                     }}
                   >
-                    ✅ Approve
+                    âœ… Approve
                   </button>
                   <button
                     onClick={() => rejectUser(request.email)}
@@ -202,7 +215,7 @@ export default function AdminAccessDashboard() {
                       cursor: "pointer",
                     }}
                   >
-                    ❌ Reject
+                    âŒ Reject
                   </button>
                 </div>
               )}

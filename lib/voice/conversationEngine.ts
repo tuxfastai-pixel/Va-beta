@@ -8,6 +8,9 @@ import { getUserGoal } from "@/lib/autonomy/scaleEngine";
 import { getUserAmbition, generateStrategyForTier, generateMindsetPrompt } from "@/lib/autonomy/ambitionEngine";
 import { classifySkill, generateSkillPath } from "@/lib/skills/skillBuilder";
 import { platforms } from "@/lib/platforms/profileSync";
+import { resolveScenario } from "@/lib/ai/conversationTrainer";
+import { buildCloseResponse, detectCloseIntent } from "@/lib/ai/closeDetector";
+import { executeModelRequest, extractTextFromCompletion } from "@/lib/ai/executeModelRequest";
 
 type MemoryRow = {
   content: unknown;
@@ -264,6 +267,27 @@ async function detectAndStorePreferences(userId: string, input: string) {
 async function runRuleBasedActions(userId: string, input: string): Promise<ConversationResult | null> {
   const lower = input.toLowerCase();
   const requestedCategory = detectRequestedCategory(lower);
+  const trainedScenario = resolveScenario(input);
+
+  if (detectCloseIntent(input)) {
+    return {
+      action: "close_deal",
+      reply: buildCloseResponse("inbox setup and client follow-up flow"),
+      metadata: {
+        source: "close_detector",
+      },
+    };
+  }
+
+  if (trainedScenario) {
+    return {
+      action: "trained_reply",
+      reply: trainedScenario.response,
+      metadata: {
+        scenario: trainedScenario.type,
+      },
+    };
+  }
 
   if (requestedCategory && isCareerStartIntent(lower)) {
     const onboardingReply = buildCareerOnboardingReply(requestedCategory);
@@ -426,9 +450,6 @@ export async function runConversation({
     };
   }
 
-  const { default: OpenAI } = await import("openai");
-  const client = new OpenAI({ apiKey: openAIKey });
-
   // Generate strategy based on tier and ambition
   let strategyRole = "You are a proactive AI assistant focused on helping the user earn income efficiently.";
   let tierInfo = "";
@@ -460,13 +481,20 @@ export async function runConversation({
     `User input: ${input}`,
   ].join("\n");
 
-  const completion = await client.chat.completions.create({
+  const completion = await executeModelRequest({
     model: "gpt-4o-mini",
     messages: [{ role: "user", content: prompt }],
-    temperature: 0.4,
+    telemetry: {
+      module: "lib/voice/conversationEngine.ts",
+      userId,
+      mode,
+    },
+    request: {
+      temperature: 0.4,
+    },
   });
 
-  const reply = completion.choices?.[0]?.message?.content?.trim() || "I am ready. Should I start with job discovery?";
+  const reply = extractTextFromCompletion(completion) || "I am ready. Should I start with job discovery?";
   const action = detectAction(input);
 
   await storeMemory({

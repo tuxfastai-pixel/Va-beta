@@ -1,5 +1,14 @@
 export type SkillClassification = "ai_executable" | "human_required";
 
+export {
+  ADMIN_AI_ASSISTED_PHASES,
+  ADMIN_AI_ASSISTED_SKILLS,
+  deriveSkillState,
+  type AutomationLevel,
+  type Skill,
+  type SkillState,
+} from "@/lib/skills/aiAssistedSkillLayer";
+
 export type MicroLesson = {
   title: string;
   example: string;
