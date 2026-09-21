@@ -9,6 +9,9 @@ import {
   validateConfirmationQuestions,
   type ConfirmationQuestion,
 } from "@/lib/career/cvConfirmation"
+import {
+  collectPendingSkillReviewCandidates,
+} from "@/lib/career/cvProfilePromotion"
 
 export const dynamic = "force-dynamic"
 
@@ -31,6 +34,8 @@ type EvidenceEntry = {
   id: string
   section: string
   text: string
+  sourceEvidence: string
+  requiresConfirmation: boolean
 }
 
 const ALLOWED_SECTIONS = new Set([
@@ -86,7 +91,11 @@ function collectEvidence(
 
   const addEvidence = (
     section: string,
-    text: string
+    text: string,
+    options?: {
+      sourceEvidence?: string
+      requiresConfirmation?: boolean
+    }
   ) => {
     const cleaned = text.trim()
 
@@ -98,6 +107,12 @@ function collectEvidence(
       id: `evidence-${entries.length + 1}`,
       section,
       text: cleaned,
+      sourceEvidence:
+        options?.sourceEvidence?.trim() ||
+        cleaned,
+      requiresConfirmation:
+        options?.requiresConfirmation ===
+        true,
     })
   }
 
@@ -146,6 +161,23 @@ function collectEvidence(
     ) {
       addEvidence(mapping.section, text)
     }
+  }
+
+  for (
+    const candidate of
+      collectPendingSkillReviewCandidates(
+        structured
+      )
+  ) {
+    addEvidence(
+      "skills",
+      candidate.skill,
+      {
+        sourceEvidence:
+          candidate.sourceEvidence,
+        requiresConfirmation: true,
+      }
+    )
   }
 
   return entries
@@ -350,7 +382,10 @@ function validateModelChanges(
     if (
       hasUnsupportedNumbers(
         proposedText,
-        matchedEvidence.text
+        [
+          matchedEvidence.text,
+          matchedEvidence.sourceEvidence,
+        ].join("\n")
       )
     ) {
       continue
@@ -373,6 +408,8 @@ function validateModelChanges(
       )
 
     const needsConfirmation =
+      matchedEvidence
+        .requiresConfirmation ||
       item.requiresConfirmation === true ||
       requiresWorkConfirmation(
         section,
@@ -409,7 +446,8 @@ function validateModelChanges(
       originalText: matchedEvidence.text,
       proposedText,
       reason,
-      sourceEvidence: matchedEvidence.text,
+      sourceEvidence:
+        matchedEvidence.sourceEvidence,
       confidence,
       confirmationStatus:
         needsConfirmation
@@ -485,6 +523,8 @@ async function generateAiChanges(
             "When the evidence only names a role or gives a vague duty such as Cashier, Teller, Technician or Support, do not silently infer detailed duties.",
             "Set requiresConfirmation to true when a stronger reconstruction depends on duties, tools, transactions, records, outcomes or responsibilities that the evidence does not explicitly confirm.",
             "For those entries, provide one to five short factual confirmationQuestions with stable lowercase IDs.",
+            "Evidence entries marked requiresConfirmation are legitimate skill candidates, but they must remain confirmation-gated and must not be silently omitted.",
+            "For a confirmation-gated skill, return a skills-section proposal using its evidenceId and set requiresConfirmation to true.",
             "A question must ask only for information needed to verify the proposed reconstruction.",
             "Never invent employers, duties, achievements, metrics, dates, qualifications, certifications, tools or years of experience.",
             "Do not return spelling-only, punctuation-only, capitalization-only or spacing-only changes.",
