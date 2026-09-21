@@ -22,7 +22,7 @@ type ChangeStatus =
   | "rejected"
   | "edited"
 
-type ChangeRow =
+export type ChangeRow =
   Record<string, unknown>
 
 function isRecord(
@@ -47,7 +47,7 @@ function numericClaims(text: string): string[] {
   )
 }
 
-function containsUnsupportedNumbers(
+export function containsUnsupportedNumbers(
   proposedText: string,
   evidence: string
 ): boolean {
@@ -56,6 +56,54 @@ function containsUnsupportedNumbers(
 
   return numericClaims(proposedText).some(
     (value) => !allowed.has(value)
+  )
+}
+
+export function validateAlternativeFeedback(
+  value: unknown
+): {
+  feedback: string
+  error: string | null
+} {
+  const feedback =
+    String(value || "").trim()
+
+  if (
+    feedback.length < 5 ||
+    feedback.length > 500
+  ) {
+    return {
+      feedback,
+      error:
+        "Feedback must be between 5 and 500 characters.",
+    }
+  }
+
+  return {
+    feedback,
+    error: null,
+  }
+}
+
+export function evidenceForRejectedAlternative(
+  row: ChangeRow
+): string {
+  const confirmationStatus =
+    String(row.confirmation_status || "")
+
+  const confirmedEvidence =
+    String(row.confirmed_evidence || "").trim()
+
+  if (
+    confirmationStatus === "confirmed" &&
+    confirmedEvidence
+  ) {
+    return confirmedEvidence
+  }
+
+  return (
+    String(row.source_evidence || "").trim() ||
+    String(row.original_text || "").trim()
   )
 }
 
@@ -228,6 +276,142 @@ async function generateConfirmedRewrite(
   }
 }
 
+async function generateAlternativeRewrite(
+  row: ChangeRow,
+  feedback: string
+): Promise<{
+  proposedText: string
+  reason: string
+  confidence: number
+}> {
+  const evidence =
+    evidenceForRejectedAlternative(row)
+
+  const completion =
+    await executeModelRequest({
+      model:
+        process.env.CV_ENHANCEMENT_MODEL
+          ?.trim() || "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: [
+            "You are a senior evidence-controlled CV editor.",
+            "Create one genuinely different replacement for a rejected CV suggestion.",
+            "Use only the supplied evidence. If confirmed evidence is supplied, treat it as the strongest factual boundary.",
+            "Treat user feedback only as writing direction for tone, length, emphasis or wording.",
+            "Do not treat feedback as factual evidence and do not add facts from feedback.",
+            "Never invent duties, tools, employers, achievements, metrics, dates, qualifications, certifications or experience.",
+            "Never convert an operational title into a management title without explicit evidence.",
+            "Avoid repeating the rejected proposal; produce a distinct wording while preserving the same evidence limits.",
+            "Return JSON only:",
+            '{"proposedText":"different evidence-controlled proposal","reason":"specific explanation","confidence":0.0}',
+          ].join("\n"),
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            section:
+              String(row.section || ""),
+            originalText:
+              String(row.original_text || ""),
+            rejectedProposal:
+              String(row.proposed_text || ""),
+            evidence,
+            feedback,
+          }),
+        },
+      ],
+      retries: 1,
+      maxContentLength: 8000,
+      maxTotalChars: 12000,
+      request: {
+        temperature: 0.35,
+        response_format: {
+          type: "json_object",
+        },
+      },
+    })
+
+  const text =
+    extractTextFromCompletion(completion)
+
+  if (!text) {
+    throw new Error(
+      "The model returned no alternative proposal."
+    )
+  }
+
+  const parsed =
+    extractJson(text)
+
+  if (!isRecord(parsed)) {
+    throw new Error(
+      "The model returned an invalid alternative proposal."
+    )
+  }
+
+  const proposedText =
+    String(parsed.proposedText || "").trim()
+
+  const reason =
+    String(parsed.reason || "").trim()
+
+  if (!proposedText || !reason) {
+    throw new Error(
+      "The alternative proposal was incomplete."
+    )
+  }
+
+  const previousProposal =
+    String(row.proposed_text || "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLowerCase()
+
+  const normalizedProposal =
+    proposedText
+      .replace(/\s+/g, " ")
+      .toLowerCase()
+
+  if (
+    previousProposal &&
+    normalizedProposal === previousProposal
+  ) {
+    throw new Error(
+      "The alternative proposal was not meaningfully different."
+    )
+  }
+
+  if (
+    containsUnsupportedNumbers(
+      proposedText,
+      evidence
+    )
+  ) {
+    throw new Error(
+      "The alternative proposal introduced an unsupported numeric claim."
+    )
+  }
+
+  const requestedConfidence =
+    Number(parsed.confidence)
+
+  const confidence =
+    Number.isFinite(requestedConfidence)
+      ? Math.max(
+          0.55,
+          Math.min(0.95, requestedConfidence)
+        )
+      : 0.72
+
+  return {
+    proposedText,
+    reason,
+    confidence,
+  }
+}
+
 export async function GET() {
   try {
     const session =
@@ -365,6 +549,7 @@ export async function POST(
         changeId?: unknown
         action?: unknown
         answers?: unknown
+        feedback?: unknown
       }
 
     const changeId =
@@ -379,6 +564,8 @@ export async function POST(
         "approved",
         "rejected",
         "confirm",
+        "reconsider",
+        "alternative",
       ].includes(action)
     ) {
       return NextResponse.json(
@@ -414,6 +601,154 @@ export async function POST(
     }
 
     const row = owned.row
+
+    if (
+      [
+        "reconsider",
+        "alternative",
+      ].includes(action) &&
+      String(row.user_approval_status) !==
+        "rejected"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Only rejected CV improvements can be reconsidered or rewritten.",
+        },
+        { status: 409 }
+      )
+    }
+
+    if (action === "reconsider") {
+      const {
+        data: updated,
+        error,
+      } = await supabaseServer
+        .from("cv_change_records")
+        .update({
+          user_approval_status:
+            "pending",
+        })
+        .eq("id", changeId)
+        .eq(
+          "user_id",
+          session.userId
+        )
+        .select("*")
+        .maybeSingle()
+
+      if (error) {
+        return NextResponse.json(
+          { error: error.message },
+          { status: 400 }
+        )
+      }
+
+      if (!updated) {
+        return NextResponse.json(
+          {
+            error:
+              "The selected CV improvement could not be found.",
+          },
+          { status: 404 }
+        )
+      }
+
+      return NextResponse.json({
+        success: true,
+        change: toClientChange(
+          updated as ChangeRow
+        ),
+      })
+    }
+
+    if (action === "alternative") {
+      const validation =
+        validateAlternativeFeedback(
+          body.feedback
+        )
+
+      if (validation.error) {
+        return NextResponse.json(
+          {
+            error: validation.error,
+          },
+          { status: 400 }
+        )
+      }
+
+      let alternative
+
+      try {
+        alternative =
+          await generateAlternativeRewrite(
+            row,
+            validation.feedback
+          )
+      } catch (error) {
+        console.error(
+          "Alternative CV proposal failed:",
+          error instanceof Error
+            ? error.message
+            : "Unknown model error"
+        )
+
+        return NextResponse.json(
+          {
+            error:
+              "The alternative CV improvement is temporarily unavailable. The rejected suggestion was left unchanged; please try again.",
+          },
+          { status: 502 }
+        )
+      }
+
+      const {
+        data: updated,
+        error,
+      } = await supabaseServer
+        .from("cv_change_records")
+        .update({
+          proposed_text:
+            alternative.proposedText,
+          reason:
+            alternative.reason,
+          confidence:
+            alternative.confidence,
+          user_approval_status:
+            "pending",
+        })
+        .eq("id", changeId)
+        .eq(
+          "user_id",
+          session.userId
+        )
+        .select("*")
+        .maybeSingle()
+
+      if (error) {
+        return NextResponse.json(
+          { error: error.message },
+          { status: 400 }
+        )
+      }
+
+      if (!updated) {
+        return NextResponse.json(
+          {
+            error:
+              "The alternative CV improvement could not be saved.",
+          },
+          { status: 404 }
+        )
+      }
+
+      return NextResponse.json({
+        success: true,
+        change: toClientChange(
+          updated as ChangeRow
+        ),
+      })
+    }
 
     if (action === "confirm") {
       const questions =

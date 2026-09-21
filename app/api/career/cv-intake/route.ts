@@ -94,6 +94,16 @@ export async function POST(req: NextRequest) {
           ? error.message
           : "Unknown extraction error"
       )
+
+      return NextResponse.json(
+        {
+          error:
+            "The full AI CV review could not be completed. Your CV was not presented as AI-reviewed. Please try again.",
+          code:
+            "CV_SKILL_EXTRACTION_FAILED",
+        },
+        { status: 502 }
+      )
     }
   }
 

@@ -248,10 +248,6 @@ export async function extractSkillsFromCv(input: {
       maxMessages: 2,
       maxContentLength: 18000,
       maxTotalChars: 20000,
-      telemetry: {
-        userId: input.userId,
-        operation: "cv_skill_extraction",
-      },
       request: {
         temperature: 0.1,
         response_format: {

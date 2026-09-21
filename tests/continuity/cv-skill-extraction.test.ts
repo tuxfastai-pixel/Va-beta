@@ -1,5 +1,6 @@
 import test from "node:test"
 import assert from "node:assert"
+import { readFileSync } from "node:fs"
 
 import {
   validateSkillExtractionPayload,
@@ -243,5 +244,61 @@ test("numbered employers and work-type headings do not create phantom jobs", () 
   assert.match(
     structured.workExperience[1],
     /Second Employer/
+  )
+})
+test("CV skill extraction request avoids unsupported stored metadata", () => {
+  const extractorSource = readFileSync(
+    new URL(
+      "../../lib/career/cvSkillExtraction.ts",
+      import.meta.url
+    ),
+    "utf8"
+  )
+
+  assert.equal(
+    extractorSource.includes(
+      'operation: "cv_skill_extraction"'
+    ),
+    false
+  )
+
+  assert.equal(
+    extractorSource.includes(
+      "telemetry:"
+    ),
+    false
+  )
+})
+
+test("failed AI extraction cannot masquerade as a successful review", () => {
+  const routeSource = readFileSync(
+    new URL(
+      "../../app/api/career/cv-intake/route.ts",
+      import.meta.url
+    ),
+    "utf8"
+  )
+
+  const reviewSource = readFileSync(
+    new URL(
+      "../../components/career-activation/ProfileReviewStage.tsx",
+      import.meta.url
+    ),
+    "utf8"
+  )
+
+  assert.match(
+    routeSource,
+    /CV_SKILL_EXTRACTION_FAILED/
+  )
+
+  assert.match(
+    routeSource,
+    /status: 502/
+  )
+
+  assert.match(
+    reviewSource,
+    /Limited parser only/
   )
 })

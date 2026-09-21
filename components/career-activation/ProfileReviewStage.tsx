@@ -42,7 +42,7 @@ export default function ProfileReviewStage() {
           const { profile } = await res.json()
           setProfile(profile)
         }
-      } catch (err) {
+      } catch {
         setStatus("Could not load profile")
       } finally {
         setLoading(false)
@@ -101,7 +101,7 @@ export default function ProfileReviewStage() {
                   <strong>Skill extraction:</strong>{" "}
                   {structured.skillExtractionMode === "ai"
                     ? "AI evidence review"
-                    : "CV skills section"}
+                    : "Limited parser only - AI evidence review was not completed"}
                 </p>
               )}
 
@@ -179,7 +179,7 @@ export default function ProfileReviewStage() {
                           >
                             {item.skill}
                             {item.evidence
-                              ? ` — Evidence: ${item.evidence}`
+                              ? ` - Evidence: ${item.evidence}`
                               : ""}
                           </li>
                         )

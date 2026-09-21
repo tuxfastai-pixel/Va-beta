@@ -52,6 +52,9 @@ type ChangesPayload = {
 type AnswersByChange =
   Record<string, ConfirmationAnswers>
 
+type FeedbackByChange =
+  Record<string, string>
+
 export default function CvImprovementsStage() {
   const router = useRouter()
 
@@ -60,6 +63,11 @@ export default function CvImprovementsStage() {
 
   const [answers, setAnswers] =
     useState<AnswersByChange>({})
+
+  const [
+    alternativeFeedback,
+    setAlternativeFeedback,
+  ] = useState<FeedbackByChange>({})
 
   const [loading, setLoading] =
     useState(true)
@@ -147,6 +155,16 @@ export default function CvImprovementsStage() {
         ...(current[changeId] || {}),
         [questionId]: value,
       },
+    }))
+  }
+
+  const setRejectedFeedback = (
+    changeId: string,
+    value: string
+  ) => {
+    setAlternativeFeedback((current) => ({
+      ...current,
+      [changeId]: value,
     }))
   }
 
@@ -273,6 +291,83 @@ export default function CvImprovementsStage() {
     } catch {
       setStatus(
         "The CV decision could not be saved."
+      )
+    } finally {
+      setActiveRequest(null)
+    }
+  }
+
+  const handleRejectedRecovery = async (
+    change: ChangeRecord,
+    action: "reconsider" | "alternative"
+  ) => {
+    const feedback =
+      alternativeFeedback[change.id] || ""
+
+    if (
+      action === "alternative" &&
+      (feedback.trim().length < 5 ||
+        feedback.trim().length > 500)
+    ) {
+      setStatus(
+        "Feedback must be between 5 and 500 characters."
+      )
+      return
+    }
+
+    setActiveRequest(change.id)
+    setStatus("")
+
+    try {
+      const response = await fetch(
+        "/api/career/cv-changes",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            changeId: change.id,
+            action,
+            ...(action === "alternative"
+              ? { feedback }
+              : {}),
+          }),
+        }
+      )
+
+      const payload =
+        (await response.json().catch(
+          () => ({})
+        )) as ChangesPayload
+
+      if (!response.ok) {
+        setStatus(
+          payload.error ||
+            "The rejected CV improvement could not be updated."
+        )
+        return
+      }
+
+      replaceChange(
+        change.id,
+        payload.change
+      )
+
+      if (action === "alternative") {
+        setRejectedFeedback(change.id, "")
+      }
+
+      setStatus(
+        action === "reconsider"
+          ? "The rejected version is back in review."
+          : "A different evidence-based version is ready for review."
+      )
+    } catch {
+      setStatus(
+        "The rejected CV improvement could not be updated."
       )
     } finally {
       setActiveRequest(null)
@@ -759,27 +854,179 @@ export default function CvImprovementsStage() {
                   )}
 
                   {change.userApprovalStatus !==
-                    "pending" && (
-                    <div
-                      role="status"
-                      style={{
-                        padding: "8px 12px",
-                        background: "#0f172a",
-                        borderRadius: 4,
-                        fontSize: 12,
-                        color:
-                          change.userApprovalStatus ===
-                          "approved"
-                            ? "#10b981"
-                            : "#ef4444",
-                      }}
-                    >
-                      {change.userApprovalStatus ===
-                      "approved"
-                        ? "Approved"
-                        : "Rejected"}
-                    </div>
-                  )}
+                    "pending" &&
+                    (change.userApprovalStatus ===
+                    "approved" ? (
+                      <div
+                        role="status"
+                        style={{
+                          padding: "8px 12px",
+                          background: "#0f172a",
+                          borderRadius: 4,
+                          fontSize: 12,
+                          color: "#10b981",
+                        }}
+                      >
+                        Approved
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          padding: 12,
+                          background: "#0f172a",
+                          borderRadius: 4,
+                          border:
+                            "1px solid #7f1d1d",
+                        }}
+                      >
+                        <div
+                          role="status"
+                          style={{
+                            fontSize: 12,
+                            color: "#fca5a5",
+                            marginBottom: 10,
+                          }}
+                        >
+                          Rejected. Your original CV
+                          wording will be retained
+                          unless you reconsider this
+                          version or generate a
+                          different evidence-based
+                          version.
+                        </div>
+
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: 13,
+                            fontWeight: 600,
+                            color: "#e2e8f0",
+                          }}
+                        >
+                          Feedback for a different
+                          version
+
+                          <textarea
+                            value={
+                              alternativeFeedback[
+                                change.id
+                              ] || ""
+                            }
+                            disabled={busy}
+                            minLength={5}
+                            maxLength={500}
+                            rows={3}
+                            onChange={(event) =>
+                              setRejectedFeedback(
+                                change.id,
+                                event.target.value
+                              )
+                            }
+                            placeholder="Example: Make this shorter and less formal. Do not add duties you did not perform."
+                            style={{
+                              display: "block",
+                              width: "100%",
+                              marginTop: 6,
+                              padding: 10,
+                              color: "#f8fafc",
+                              background: "#0b1220",
+                              border:
+                                "1px solid #64748b",
+                              borderRadius: 4,
+                              resize: "vertical",
+                              boxSizing:
+                                "border-box",
+                            }}
+                          />
+                        </label>
+
+                        <p
+                          style={{
+                            margin: "8px 0 12px",
+                            color: "#cbd5e1",
+                            fontSize: 12,
+                          }}
+                        >
+                          Feedback can guide tone,
+                          length, emphasis, or
+                          wording. It must not add
+                          duties you did not perform.
+                        </p>
+
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <button
+                            type="button"
+                            disabled={
+                              activeRequest !== null
+                            }
+                            onClick={() =>
+                              void handleRejectedRecovery(
+                                change,
+                                "alternative"
+                              )
+                            }
+                            style={{
+                              flex: 1,
+                              minWidth: 220,
+                              padding: "9px 12px",
+                              background: busy
+                                ? "#475569"
+                                : "#3b82f6",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 4,
+                              cursor:
+                                activeRequest !== null
+                                  ? "not-allowed"
+                                  : "pointer",
+                            }}
+                          >
+                            {busy
+                              ? "Generating..."
+                              : "Generate a different version"}
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={
+                              activeRequest !== null
+                            }
+                            onClick={() =>
+                              void handleRejectedRecovery(
+                                change,
+                                "reconsider"
+                              )
+                            }
+                            style={{
+                              flex: 1,
+                              minWidth: 200,
+                              padding: "9px 12px",
+                              background: busy
+                                ? "#475569"
+                                : "#334155",
+                              color: "white",
+                              border:
+                                "1px solid #64748b",
+                              borderRadius: 4,
+                              cursor:
+                                activeRequest !== null
+                                  ? "not-allowed"
+                                  : "pointer",
+                            }}
+                          >
+                            {busy
+                              ? "Saving..."
+                              : "Reconsider this version"}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                 </section>
               )
             })}
