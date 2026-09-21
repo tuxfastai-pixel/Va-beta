@@ -302,3 +302,100 @@ test("failed AI extraction cannot masquerade as a successful review", () => {
     /Limited parser only/
   )
 })
+
+test("pending skill evidence is confirmation-gated and approved skills update the profile", async () => {
+  const {
+    collectPendingSkillReviewCandidates,
+    applyApprovedCvChange,
+  } = await import(
+    "../../lib/career/cvProfilePromotion.ts"
+  )
+
+  const profile = {
+    skills: ["Microsoft Office"],
+    skillEvidence: [
+      {
+        skill: "Cash Reconciliation",
+        evidence:
+          "Counted, balanced, and reconciled cash and daily takings.",
+        requiresConfirmation: true,
+      },
+    ],
+    skillsNeedingConfirmation: [
+      {
+        skill: "Cash Reconciliation",
+        evidence:
+          "Counted, balanced, and reconciled cash and daily takings.",
+        requiresConfirmation: true,
+      },
+    ],
+  }
+
+  const candidates =
+    collectPendingSkillReviewCandidates(
+      profile
+    )
+
+  assert.deepEqual(candidates, [
+    {
+      skill: "Cash Reconciliation",
+      sourceEvidence:
+        "Counted, balanced, and reconciled cash and daily takings.",
+      requiresConfirmation: true,
+    },
+  ])
+
+  const promoted =
+    applyApprovedCvChange(
+      profile,
+      {
+        section: "skills",
+        originalText:
+          "Cash Reconciliation",
+        proposedText:
+          "Cash Handling and Reconciliation",
+      }
+    )
+
+  assert.deepEqual(
+    promoted.skills,
+    [
+      "Microsoft Office",
+      "Cash Handling and Reconciliation",
+    ]
+  )
+
+  assert.deepEqual(
+    promoted.skillsNeedingConfirmation,
+    []
+  )
+})
+
+test("approved professional summary replaces the canonical summary", async () => {
+  const {
+    applyApprovedCvChange,
+  } = await import(
+    "../../lib/career/cvProfilePromotion.ts"
+  )
+
+  const promoted =
+    applyApprovedCvChange(
+      {
+        professionalSummary:
+          "Old summary",
+      },
+      {
+        section:
+          "professional_summary",
+        originalText:
+          "Old summary",
+        proposedText:
+          "Evidence-controlled professional summary",
+      }
+    )
+
+  assert.equal(
+    promoted.professionalSummary,
+    "Evidence-controlled professional summary"
+  )
+})
