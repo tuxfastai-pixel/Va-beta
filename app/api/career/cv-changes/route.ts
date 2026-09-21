@@ -15,6 +15,9 @@ import {
   validateConfirmationQuestions,
   type ConfirmationStatus,
 } from "@/lib/career/cvConfirmation"
+import {
+  applyApprovedCvChange,
+} from "@/lib/career/cvProfilePromotion"
 
 type ChangeStatus =
   | "pending"
@@ -410,6 +413,69 @@ async function generateAlternativeRewrite(
     reason,
     confidence,
   }
+}
+
+
+async function promoteApprovedChange(
+  row: ChangeRow,
+  userId: string
+): Promise<string | null> {
+  const profileId =
+    String(row.profile_id || "").trim()
+
+  if (!profileId) {
+    return "The approved change has no profile."
+  }
+
+  const {
+    data: profile,
+    error: readError,
+  } = await supabaseServer
+    .from("master_career_profiles")
+    .select("structured_profile")
+    .eq("id", profileId)
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  if (readError) {
+    return readError.message
+  }
+
+  if (!profile) {
+    return "The master career profile was not found."
+  }
+
+  const structured =
+    (
+      profile.structured_profile || {}
+    ) as Record<string, unknown>
+
+  const updatedProfile =
+    applyApprovedCvChange(
+      structured,
+      {
+        section:
+          String(row.section || ""),
+        originalText:
+          String(row.original_text || ""),
+        proposedText:
+          String(row.proposed_text || ""),
+      }
+    )
+
+  const { error: updateError } =
+    await supabaseServer
+      .from("master_career_profiles")
+      .update({
+        structured_profile:
+          updatedProfile,
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq("id", profileId)
+      .eq("user_id", userId)
+
+  return updateError?.message || null
 }
 
 export async function GET() {
@@ -931,6 +997,37 @@ export async function POST(
         },
         { status: 404 }
       )
+    }
+
+    if (action === "approved") {
+      const promotionError =
+        await promoteApprovedChange(
+          updated as ChangeRow,
+          session.userId
+        )
+
+      if (promotionError) {
+        await supabaseServer
+          .from("cv_change_records")
+          .update({
+            user_approval_status:
+              "pending",
+          })
+          .eq("id", changeId)
+          .eq(
+            "user_id",
+            session.userId
+          )
+
+        return NextResponse.json(
+          {
+            error:
+              "The improvement could not be applied to your career profile. It remains pending so you can try again.",
+            details: promotionError,
+          },
+          { status: 500 }
+        )
+      }
     }
 
     return NextResponse.json({
