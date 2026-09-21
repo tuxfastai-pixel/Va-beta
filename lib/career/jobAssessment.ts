@@ -60,9 +60,47 @@ export function parseJobDescription(input: { title?: string; description: string
 
   const uniqueKeywords = Array.from(new Set(keywordCandidates)).slice(0, 40)
 
-  const requiredSkills = uniqueKeywords.filter((token) => ["excel", "powerbi", "python", "crm", "compliance", "analysis", "customer", "support", "interview"].includes(token))
-  const preferredSkills = uniqueKeywords.filter((token) => ["automation", "documentation", "leadership", "communication", "reporting"].includes(token))
-  const tools = uniqueKeywords.filter((token) => ["excel", "powerbi", "salesforce", "hubspot", "notion", "figma", "slack", "zendesk"].includes(token))
+  const skillPatterns: Array<[string, RegExp]> = [
+    ["Microsoft Excel", /\bexcel\b/i],
+    ["Power BI", /\bpower\s*bi\b/i],
+    ["Python", /\bpython\b/i],
+    ["CRM", /\bcrm\b|customer relationship management/i],
+    ["Compliance", /\bcompliance\b/i],
+    ["Data Analysis", /\bdata analys(?:is|tics)|analytical skills?\b/i],
+    ["Customer Service", /\bcustomer (?:service|support|care|satisfaction)\b/i],
+    ["Technical Support", /\btechnical support|help\s*desk|end[ -]?user support\b/i],
+    ["Hardware Support", /\bhardware|equipment maintenance|device support\b/i],
+    ["Software Support", /\bsoftware support|troubleshoot(?:ing)? software\b/i],
+    ["Communication", /\bcommunication|communicat(?:e|ion)\b/i],
+    ["Documentation", /\bdocumentation|document(?:ing)?\b/i],
+    ["Reporting", /\breporting|prepare reports?\b/i],
+    ["Project Management", /\bproject management|manage projects?\b/i],
+    ["Microsoft Office", /\bmicrosoft office|ms office|word|powerpoint|outlook\b/i],
+    ["Sales", /\bsales|selling\b/i],
+    ["Cash Handling", /\bcash handling|cashier|till|point[ -]?of[ -]?sale|\bpos\b/i],
+    ["Leadership", /\bleadership|team lead|supervis(?:e|ion)\b/i],
+    ["Administration", /\badministrat(?:ion|ive)|office support\b/i],
+    ["Problem Solving", /\bproblem[ -]?solving|resolve issues?|diagnos(?:e|is)\b/i],
+  ]
+
+  const requiredSkills = skillPatterns
+    .filter(([, pattern]) => pattern.test(text))
+    .map(([skill]) => skill)
+
+  const preferredLines = lines
+    .filter((line) => /preferred|advantage|nice to have|desirable/i.test(line))
+    .join("\n")
+
+  const preferredSkills = skillPatterns
+    .filter(([, pattern]) => pattern.test(preferredLines))
+    .map(([skill]) => skill)
+
+  const tools = skillPatterns
+    .filter(([skill, pattern]) =>
+      /Excel|Power BI|Python|CRM|Microsoft Office/.test(skill) &&
+      pattern.test(text)
+    )
+    .map(([skill]) => skill)
 
   return {
     title: String(input.title || lines[0] || "Untitled role").trim(),
@@ -101,13 +139,28 @@ export function assessJobFit(input: {
   riskFlags: ApplicationRiskFlag[]
   missingSkills: string[]
 } {
-  const verified = new Set(input.profile.translatedSkills.map((skill) => skill.toLowerCase()))
-  const transferable = new Set(input.profile.hiddenSkills.map((skill) => skill.toLowerCase()))
+  const normalizeSkill = (value: string) =>
+    value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
+
+  const profileSkills = input.profile.translatedSkills.map(normalizeSkill)
+  const transferableSkills = input.profile.hiddenSkills.map(normalizeSkill)
   const required = input.parsedJob.requiredSkills
 
-  const verifiedHits = required.filter((skill) => verified.has(skill.toLowerCase())).length
-  const transferableHits = required.filter((skill) => transferable.has(skill.toLowerCase()) && !verified.has(skill.toLowerCase())).length
-  const missingSkills = required.filter((skill) => !verified.has(skill.toLowerCase()) && !transferable.has(skill.toLowerCase()))
+  const matches = (requiredSkill: string, candidate: string) => {
+    const requiredWords = normalizeSkill(requiredSkill).split(" ").filter((word) => word.length > 2)
+    const candidateWords = new Set(candidate.split(" ").filter((word) => word.length > 2))
+    return requiredWords.length > 0 && requiredWords.every((word) => candidateWords.has(word))
+  }
+
+  const isVerified = (skill: string) =>
+    profileSkills.some((candidate) => matches(skill, candidate) || matches(candidate, normalizeSkill(skill)))
+
+  const isTransferable = (skill: string) =>
+    transferableSkills.some((candidate) => matches(skill, candidate) || matches(candidate, normalizeSkill(skill)))
+
+  const verifiedHits = required.filter(isVerified).length
+  const transferableHits = required.filter((skill) => !isVerified(skill) && isTransferable(skill)).length
+  const missingSkills = required.filter((skill) => !isVerified(skill) && !isTransferable(skill))
 
   const verifiedSkillScore = pct((verifiedHits / Math.max(1, required.length)) * 100)
   const transferableSkillScore = pct((transferableHits / Math.max(1, required.length)) * 100)
