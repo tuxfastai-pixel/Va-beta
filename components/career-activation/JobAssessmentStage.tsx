@@ -10,6 +10,7 @@ type JobAssessment = {
   matchScore: number
   matchExplanation: string
   strengths: string[]
+  transferableStrengths: string[]
   missingSkills: string[]
   recommendationBand?: string
   scoreBreakdown?: Record<string, number>
@@ -104,6 +105,22 @@ export default function JobAssessmentStage() {
                 </ul>
               ) : (
                 <p style={{ marginBottom: 0, color: "#cbd5e1" }}>No confirmed CV evidence matches the recognised requirements yet.</p>
+              )}
+            </div>
+
+            <div style={{ background: "#0b1020", padding: 16, borderRadius: 6, marginBottom: 16 }}>
+              <h2 style={{ marginTop: 0, color: "#60a5fa", fontSize: 20 }}>Transferable Strengths</h2>
+              {assessment.transferableStrengths?.length > 0 ? (
+                <>
+                  <ul style={{ marginBottom: 8, color: "#cbd5e1" }}>
+                    {assessment.transferableStrengths.map((skill) => <li key={skill}>{skill}</li>)}
+                  </ul>
+                  <p style={{ marginBottom: 0, color: "#94a3b8", fontSize: 14 }}>
+                    Supported by your work history, but presented as transferable evidence—not as invented direct experience.
+                  </p>
+                </>
+              ) : (
+                <p style={{ marginBottom: 0, color: "#cbd5e1" }}>No transferable requirement matches were identified.</p>
               )}
             </div>
 
