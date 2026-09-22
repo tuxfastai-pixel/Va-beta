@@ -3,6 +3,10 @@ import assert from "node:assert"
 import { readFile } from "node:fs/promises"
 import { structureCvInput } from "../../lib/career/cvIntake.ts"
 import {
+  assessJobFit,
+  parseJobDescription,
+} from "../../lib/career/jobAssessment.ts"
+import {
   buildContinuityCheckpoint,
   canClaimSkillOnCv,
   resolveRecommendationBand,
@@ -288,4 +292,56 @@ test("CV enhancement uses stable evidence IDs and never presents a cosmetic fall
     review,
     /View supporting CV evidence/
   )
+})
+
+
+test("job assessment separates transferable sales evidence from unsupported CRM and leadership", () => {
+  const parsedJob = parseJobDescription({
+    title: "Inbound Sales Consultant",
+    description: [
+      "Required skills:",
+      "Sales experience and CRM proficiency.",
+      "Leadership experience is required.",
+    ].join("\n"),
+  })
+
+  const result = assessJobFit({
+    parsedJob,
+    profile: {
+      translatedSkills: ["Customer Service"],
+      hiddenSkills: [],
+      evidenceText: [
+        "Position: Teller",
+        "Processed customer transactions using cash at the till point.",
+        "Handled sales and provided customer service.",
+        "Counted, balanced and reconciled daily cash takings.",
+      ],
+      profileConfidence: 0.85,
+      internationalPaymentReadinessScore: 50,
+    },
+  })
+
+  assert.deepEqual(result.verifiedSkills, [])
+  assert.deepEqual(result.transferableSkills, ["Sales"])
+  assert.deepEqual(result.missingSkills, ["CRM", "Leadership"])
+  assert.ok(result.scores.matchScore > 15)
+})
+
+test("preferred skills are not penalised as required job gaps", () => {
+  const parsedJob = parseJobDescription({
+    title: "Support Consultant",
+    description: [
+      "Requirements:",
+      "Customer service and technical support experience.",
+      "Leadership would be an advantage.",
+    ].join("\n"),
+  })
+
+  assert.deepEqual(parsedJob.requiredSkills, [
+    "Customer Service",
+    "Technical Support",
+  ])
+  assert.deepEqual(parsedJob.preferredSkills, [
+    "Leadership",
+  ])
 })
