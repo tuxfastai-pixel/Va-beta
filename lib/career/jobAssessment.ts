@@ -83,17 +83,30 @@ export function parseJobDescription(input: { title?: string; description: string
     ["Problem Solving", /\bproblem[ -]?solving|resolve issues?|diagnos(?:e|is)\b/i],
   ]
 
-  const requiredSkills = skillPatterns
-    .filter(([, pattern]) => pattern.test(text))
-    .map(([skill]) => skill)
-
   const preferredLines = lines
-    .filter((line) => /preferred|advantage|nice to have|desirable/i.test(line))
+    .filter((line) => /preferred|advantage|nice to have|desirable|bonus/i.test(line))
     .join("\n")
+
+  const requirementLines = lines
+    .filter((line) =>
+      /required|requirements|must|essential|proficien|experience (?:with|in)|skills?|responsibilit|duties|you will|role involves/i.test(line) &&
+      !/preferred|advantage|nice to have|desirable|bonus/i.test(line)
+    )
+    .join("\n")
+
+  const requirementText =
+    requirementLines.trim().length > 0
+      ? requirementLines
+      : text
+
+  const requiredSkills = skillPatterns
+    .filter(([, pattern]) => pattern.test(requirementText))
+    .map(([skill]) => skill)
 
   const preferredSkills = skillPatterns
     .filter(([, pattern]) => pattern.test(preferredLines))
     .map(([skill]) => skill)
+    .filter((skill) => !requiredSkills.includes(skill))
 
   const tools = skillPatterns
     .filter(([skill, pattern]) =>
@@ -132,35 +145,73 @@ export function assessJobFit(input: {
     hiddenSkills: string[]
     profileConfidence: number
     internationalPaymentReadinessScore: number
+    evidenceText?: string[]
   }
 }): {
   scores: AssessmentScores
   band: RecommendationBand
   riskFlags: ApplicationRiskFlag[]
+  verifiedSkills: string[]
+  transferableSkills: string[]
   missingSkills: string[]
 } {
   const normalizeSkill = (value: string) =>
     value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
 
-  const profileSkills = input.profile.translatedSkills.map(normalizeSkill)
-  const transferableSkills = input.profile.hiddenSkills.map(normalizeSkill)
-  const required = input.parsedJob.requiredSkills
-
-  const matches = (requiredSkill: string, candidate: string) => {
-    const requiredWords = normalizeSkill(requiredSkill).split(" ").filter((word) => word.length > 2)
-    const candidateWords = new Set(candidate.split(" ").filter((word) => word.length > 2))
-    return requiredWords.length > 0 && requiredWords.every((word) => candidateWords.has(word))
+  const capabilityAliases: Record<string, RegExp> = {
+    "Microsoft Excel": /\bexcel\b/i,
+    "Power BI": /\bpower\s*bi\b/i,
+    Python: /\bpython\b/i,
+    CRM: /\bcrm\b|customer relationship management|salesforce|hubspot/i,
+    Compliance: /\bcompliance\b|regulatory requirements?/i,
+    "Data Analysis": /\bdata analys(?:is|tics)|analytical skills?\b/i,
+    "Customer Service": /\bcustomer (?:service|support|care|satisfaction)|assist(?:ed|ing)? customers?|client support/i,
+    "Technical Support": /\btechnical support|help\s*desk|end[ -]?user support|troubleshoot/i,
+    "Hardware Support": /\bhardware|equipment maintenance|device support/i,
+    "Software Support": /\bsoftware support|software troubleshooting/i,
+    Communication: /\bcommunication|communicat(?:e|ion)|customer liaison|client liaison/i,
+    Documentation: /\bdocumentation|document(?:ing|ed)?|record keeping/i,
+    Reporting: /\breporting|prepare(?:d)? reports?|daily records?/i,
+    "Project Management": /\bproject management|managed? projects?|project planning/i,
+    "Microsoft Office": /\bmicrosoft office|ms office|word|powerpoint|outlook/i,
+    Sales: /\bsales|selling|cashier|teller|till|point[ -]?of[ -]?sale|customer transactions?/i,
+    "Cash Handling": /\bcash handling|cashier|teller|till|cash transactions?|daily takings|reconcil(?:e|ed|iation)/i,
+    Leadership: /\bleadership|team lead|supervis(?:e|ed|ion)|managed? (?:a )?team/i,
+    Administration: /\badministrat(?:ion|ive)|office support|record keeping/i,
+    "Problem Solving": /\bproblem[ -]?solving|resolved? issues?|diagnos(?:e|is)|troubleshoot/i,
   }
 
-  const isVerified = (skill: string) =>
-    profileSkills.some((candidate) => matches(skill, candidate) || matches(candidate, normalizeSkill(skill)))
+  const directCorpus = input.profile.translatedSkills.join("\n")
+  const evidenceCorpus = [
+    ...input.profile.evidenceText || [],
+    ...input.profile.hiddenSkills,
+  ].join("\n")
+  const required = input.parsedJob.requiredSkills
 
-  const isTransferable = (skill: string) =>
-    transferableSkills.some((candidate) => matches(skill, candidate) || matches(candidate, normalizeSkill(skill)))
+  const directMatch = (skill: string) => {
+    const pattern = capabilityAliases[skill]
+    return pattern
+      ? pattern.test(directCorpus)
+      : directCorpus.includes(normalizeSkill(skill))
+  }
 
-  const verifiedHits = required.filter(isVerified).length
-  const transferableHits = required.filter((skill) => !isVerified(skill) && isTransferable(skill)).length
-  const missingSkills = required.filter((skill) => !isVerified(skill) && !isTransferable(skill))
+  const evidenceMatch = (skill: string) => {
+    const pattern = capabilityAliases[skill]
+    return pattern
+      ? pattern.test(evidenceCorpus)
+      : evidenceCorpus.includes(normalizeSkill(skill))
+  }
+
+  const verifiedSkills = required.filter(directMatch)
+  const transferableSkills = required.filter(
+    (skill) => !directMatch(skill) && evidenceMatch(skill)
+  )
+  const missingSkills = required.filter(
+    (skill) => !directMatch(skill) && !evidenceMatch(skill)
+  )
+
+  const verifiedHits = verifiedSkills.length
+  const transferableHits = transferableSkills.length
 
   const verifiedSkillScore = pct((verifiedHits / Math.max(1, required.length)) * 100)
   const transferableSkillScore = pct((transferableHits / Math.max(1, required.length)) * 100)
@@ -198,6 +249,8 @@ export function assessJobFit(input: {
     },
     band: resolveRecommendationBand(matchScore),
     riskFlags,
+    verifiedSkills,
+    transferableSkills,
     missingSkills,
   }
 }
