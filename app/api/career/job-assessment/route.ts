@@ -25,6 +25,7 @@ function responseFromRow(row: JsonRecord) {
     matchScore: Number(assessment.matchScore ?? 0),
     matchExplanation: String(assessment.matchExplanation || ""),
     strengths: asStrings(assessment.strengths),
+    transferableStrengths: asStrings(assessment.transferableStrengths),
     missingSkills: asStrings(assessment.missingSkills),
     scoreBreakdown: (assessment.scoreBreakdown || {}) as JsonRecord,
     recommendationBand: String(assessment.recommendationBand || ""),
@@ -156,14 +157,17 @@ export async function POST(request: NextRequest) {
         hiddenSkills: pendingSkills,
         profileConfidence: skills.length >= 5 ? 0.85 : skills.length > 0 ? 0.65 : 0.35,
         internationalPaymentReadinessScore: Number(payment.paymentReadinessScore ?? 50),
+        evidenceText: [
+          ...asStrings(structured.workExperience),
+          ...asStrings(structured.projects),
+          ...asStrings(structured.achievements),
+          ...asStrings(structured.certifications),
+        ],
       },
     })
 
-    const normalizedSkills = skills.map((skill) => skill.toLowerCase())
-    const strengths = parsedJob.requiredSkills.filter((required) => {
-      const words = required.toLowerCase().split(/\s+/).filter((word) => word.length > 2)
-      return normalizedSkills.some((skill) => words.every((word) => skill.includes(word)))
-    })
+    const strengths = fit.verifiedSkills
+    const transferableStrengths = fit.transferableSkills
 
     const sourceJob = {
       id: jobId || null,
@@ -175,10 +179,11 @@ export async function POST(request: NextRequest) {
     const assessment = {
       matchScore: fit.scores.matchScore,
       matchExplanation:
-        strengths.length > 0
-          ? `Your confirmed profile matches ${strengths.length} of ${parsedJob.requiredSkills.length} recognised requirements. Review the gaps before applying.`
-          : "No confirmed skill match was found yet. Review the listed gaps and add evidence to your profile before applying.",
+        strengths.length + transferableStrengths.length > 0
+          ? `Your profile directly matches ${strengths.length} and supports ${transferableStrengths.length} transferable match${transferableStrengths.length === 1 ? "" : "es"} across ${parsedJob.requiredSkills.length} recognised required skills. Review the evidence and gaps before applying.`
+          : "No evidence-backed match was found yet. Review the listed gaps and add evidence to your profile before applying.",
       strengths,
+      transferableStrengths,
       missingSkills: fit.missingSkills,
       scoreBreakdown: fit.scores,
       recommendationBand: fit.band,
