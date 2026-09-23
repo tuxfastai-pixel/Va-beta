@@ -1,3 +1,5 @@
+import { isSkillCandidateCovered } from "@/lib/career/profileCuration"
+
 export type StructuredCareerProfile =
   Record<string, unknown>
 
@@ -67,6 +69,11 @@ export function collectPendingSkillReviewCandidates(
       !skill ||
       !sourceEvidence ||
       confirmed.has(key) ||
+      isSkillCandidateCovered(
+        skill,
+        sourceEvidence,
+        structured.skills
+      ) ||
       seen.has(key)
     ) {
       continue

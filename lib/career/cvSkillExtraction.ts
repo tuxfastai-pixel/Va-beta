@@ -20,6 +20,7 @@ export type SkillExtractionResult = {
   confirmedSkills: string[]
   evidence: SkillEvidence[]
   pendingSkills: SkillEvidence[]
+  workExperience?: string[]
   mode: "ai"
 }
 
@@ -162,6 +163,65 @@ export function validateSkillExtractionPayload(
   return accepted.slice(0, 40)
 }
 
+export function validateWorkExperiencePayload(
+  payload: unknown,
+  sourceText: string
+): string[] {
+  if (!isRecord(payload) || !Array.isArray(payload.workExperience)) {
+    return []
+  }
+
+  const source = normalized(sourceText)
+  const seen = new Set<string>()
+  const records: string[] = []
+
+  for (const candidate of payload.workExperience) {
+    if (!isRecord(candidate)) continue
+
+    const clean = (value: unknown, limit: number) =>
+      typeof value === "string"
+        ? value.replace(/\s+/g, " ").trim().slice(0, limit)
+        : ""
+
+    const company = clean(candidate.company, 160)
+    const position = clean(candidate.position, 160)
+    const period = clean(candidate.period, 120)
+    const responsibilities = Array.isArray(candidate.responsibilities)
+      ? candidate.responsibilities.map((item) => clean(item, 500)).filter(Boolean).slice(0, 8)
+      : []
+    const evidenceFragments = Array.isArray(candidate.evidence)
+      ? candidate.evidence.map((item) => clean(item, 500)).filter(Boolean).slice(0, 12)
+      : []
+
+    const factualValues = [company, position, period, ...responsibilities].filter(Boolean)
+    if (
+      (!company && !position) ||
+      evidenceFragments.length === 0 ||
+      evidenceFragments.some((fragment) => !source.includes(normalized(fragment))) ||
+      factualValues.some((value) => !source.includes(normalized(value)))
+    ) {
+      continue
+    }
+
+    const key = normalized([company, position, period].join("|"))
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+
+    const lines = [
+      company ? `Company: ${company}` : "",
+      position ? `Position: ${position}` : "",
+      responsibilities.length > 0
+        ? `Responsibilities: ${responsibilities.join(" ")}`
+        : "",
+      period ? `Employment period: ${period}` : "",
+    ].filter(Boolean)
+
+    records.push(lines.join("\n"))
+  }
+
+  return records.slice(0, 12)
+}
+
 function redactPersonalLines(text: string) {
   return text
     .split(/\r?\n/)
@@ -207,6 +267,7 @@ export async function extractSkillsFromCv(input: {
       confirmedSkills: [],
       evidence: [],
       pendingSkills: [],
+      workExperience: [],
       mode: "ai",
     }
   }
@@ -234,9 +295,12 @@ export async function extractSkillsFromCv(input: {
             "Do not return proficiency labels such as Advanced, Solid, Expert, Intermediate, Basic, Good or Excellent as skills.",
             "Do not return personal traits unless the CV provides work evidence demonstrating them.",
             "Normalize skill names into concise ATS-readable terminology without overstating the evidence.",
+            "Also group work history into distinct employer and role records.",
+            "For work history, copy company, position, period and every responsibility verbatim from the CV. Do not paraphrase.",
+            "Every work record must include evidence fragments copied exactly from the supplied CV. Omit any field not explicitly stated.",
             "Return JSON only in this shape:",
-            '{"skills":[{"skill":"ATS-readable skill","evidence":"exact CV fragment","sourceSection":"section or evidence location","evidenceType":"explicit|inferred","confidence":0.0}]}',
-            "Return at most 40 distinct skills.",
+            '{"skills":[{"skill":"ATS-readable skill","evidence":"exact CV fragment","sourceSection":"section or evidence location","evidenceType":"explicit|inferred","confidence":0.0}],"workExperience":[{"company":"exact employer text","position":"exact role text","period":"exact period text","responsibilities":["exact duty text"],"evidence":["exact supporting fragment"]}]}',
+            "Return at most 40 distinct skills and 12 distinct work records.",
           ].join("\n"),
         },
         {
@@ -265,9 +329,17 @@ export async function extractSkillsFromCv(input: {
     )
   }
 
+  const parsed = extractJson(text)
+
   const evidence =
     validateSkillExtractionPayload(
-      extractJson(text),
+      parsed,
+      sourceText
+    )
+
+  const workExperience =
+    validateWorkExperiencePayload(
+      parsed,
       sourceText
     )
 
@@ -289,6 +361,7 @@ export async function extractSkillsFromCv(input: {
     confirmedSkills,
     evidence,
     pendingSkills,
+    workExperience,
     mode: "ai",
   }
 }

@@ -60,6 +60,28 @@ export function isMarketableSkill(value: unknown): boolean {
   )
 }
 
+export function isSkillCandidateCovered(
+  candidateSkill: unknown,
+  sourceEvidence: unknown,
+  confirmedSkills: unknown
+): boolean {
+  const confirmed = new Set(
+    strings(confirmedSkills)
+      .filter(isMarketableSkill)
+      .map(normalizeCareerTerm)
+  )
+
+  const candidateKey =
+    normalizeCareerTerm(String(candidateSkill || ""))
+  const evidenceKey =
+    normalizeCareerTerm(String(sourceEvidence || ""))
+
+  return Boolean(
+    (candidateKey && confirmed.has(candidateKey)) ||
+    (evidenceKey && confirmed.has(evidenceKey))
+  )
+}
+
 export function classifySkill(skill: string): SkillCategory {
   const key = normalizeCareerTerm(skill)
 

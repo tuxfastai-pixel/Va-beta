@@ -564,3 +564,90 @@ test("profile details resolve the matching follow-up questions", async () => {
   assert.deepEqual(updated.missingFields, [])
   assert.deepEqual(updated.followUpQuestions, [])
 })
+
+
+test("work history grouping accepts only verbatim evidence-backed records", async () => {
+  const {
+    validateWorkExperiencePayload,
+  } = await import("../../lib/career/cvSkillExtraction.ts")
+
+  const source = [
+    "Company: Example Systems",
+    "Position: Support Technician",
+    "Employment period: 2020 to 2024",
+    "Maintained customer equipment.",
+  ].join("\n")
+
+  const records = validateWorkExperiencePayload({
+    workExperience: [
+      {
+        company: "Example Systems",
+        position: "Support Technician",
+        period: "2020 to 2024",
+        responsibilities: ["Maintained customer equipment."],
+        evidence: [
+          "Company: Example Systems",
+          "Position: Support Technician",
+          "Employment period: 2020 to 2024",
+          "Maintained customer equipment.",
+        ],
+      },
+      {
+        company: "Invented Employer",
+        position: "Manager",
+        period: "2024",
+        responsibilities: ["Managed a team."],
+        evidence: ["Invented Employer"],
+      },
+    ],
+  }, source)
+
+  assert.equal(records.length, 1)
+  assert.match(records[0], /Example Systems/)
+  assert.doesNotMatch(records[0], /Invented/)
+})
+
+test("confirmed evidence wording suppresses redundant normalized candidates", async () => {
+  const {
+    isSkillCandidateCovered,
+  } = await import("../../lib/career/profileCuration.ts")
+  const {
+    collectPendingSkillReviewCandidates,
+  } = await import("../../lib/career/cvProfilePromotion.ts")
+
+  assert.equal(
+    isSkillCandidateCovered(
+      "AI Product Development",
+      "AI product and delivery",
+      ["AI product and delivery", "REST APIs"]
+    ),
+    true
+  )
+
+  const candidates = collectPendingSkillReviewCandidates({
+    skills: ["AI product and delivery", "REST APIs"],
+    skillsNeedingConfirmation: [
+      {
+        skill: "AI Product Development",
+        evidence: "AI product and delivery",
+        requiresConfirmation: true,
+      },
+      {
+        skill: "REST APIs",
+        evidence: "REST APIs",
+        requiresConfirmation: true,
+      },
+      {
+        skill: "Stakeholder Facilitation",
+        evidence: "Prepared board questions",
+        requiresConfirmation: true,
+      },
+    ],
+  })
+
+  assert.deepEqual(candidates, [{
+    skill: "Stakeholder Facilitation",
+    sourceEvidence: "Prepared board questions",
+    requiresConfirmation: true,
+  }])
+})

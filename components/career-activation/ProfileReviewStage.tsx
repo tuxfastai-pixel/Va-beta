@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import {
   curateSkillGroups,
   isMarketableSkill,
+  isSkillCandidateCovered,
   normalizeCareerTerm,
   summarizeExperience,
 } from "@/lib/career/profileCuration"
@@ -98,9 +99,7 @@ export default function ProfileReviewStage() {
   )
 
   const pendingSkills = useMemo(() => {
-    const confirmed = new Set(
-      skillGroups.flatMap((group) => group.skills).map(normalizeCareerTerm)
-    )
+    const allConfirmedSkills = strings(structured?.skills)
     const seen = new Set<string>()
     const values = Array.isArray(structured?.skillsNeedingConfirmation)
       ? structured.skillsNeedingConfirmation
@@ -109,11 +108,21 @@ export default function ProfileReviewStage() {
     return values.filter((item) => {
       const skill = String(item.skill || "").trim()
       const key = normalizeCareerTerm(skill)
-      if (!isMarketableSkill(skill) || confirmed.has(key) || seen.has(key)) return false
+      if (
+        !isMarketableSkill(skill) ||
+        isSkillCandidateCovered(
+          skill,
+          item.evidence,
+          allConfirmedSkills
+        ) ||
+        seen.has(key)
+      ) {
+        return false
+      }
       seen.add(key)
       return true
     })
-  }, [skillGroups, structured?.skillsNeedingConfirmation])
+  }, [structured?.skills, structured?.skillsNeedingConfirmation])
 
   const experience = useMemo(
     () => summarizeExperience((structured || {}) as Record<string, unknown>),

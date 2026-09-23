@@ -531,6 +531,11 @@ export function mergeSkillExtraction(
   const next: StructuredCv = {
     ...structured,
     skills: combinedSkills,
+    workExperience:
+      extraction.workExperience &&
+      extraction.workExperience.length > 0
+        ? extraction.workExperience
+        : structured.workExperience,
     skillEvidence: extraction.evidence,
     skillsNeedingConfirmation:
       extraction.pendingSkills,
