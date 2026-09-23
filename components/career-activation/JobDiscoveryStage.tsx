@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 
 type Job = {
@@ -9,39 +9,106 @@ type Job = {
   company: string
   description: string
   level: string
+  matchScore: number | null
+  recommended?: boolean
+  source?: string | null
+  location?: string | null
+  salary?: string | null
+  applyUrl?: string | null
+  qualityScore?: number
+}
+
+type SearchSummary = {
+  discovered: number
+  accepted: number
+  recommended: number
+  sources: string[]
+  searchedAt: string
 }
 
 export default function JobDiscoveryStage() {
   const router = useRouter()
+  const searchedEmptyFeed = useRef(false)
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
+  const [searching, setSearching] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [searchSummary, setSearchSummary] = useState<SearchSummary | null>(null)
   const [title, setTitle] = useState("")
   const [company, setCompany] = useState("")
   const [description, setDescription] = useState("")
   const [status, setStatus] = useState("")
 
+  const loadJobs = async () => {
+    const res = await fetch("/api/career/recommended-jobs", {
+      credentials: "include",
+      cache: "no-store",
+    })
+    const payload = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(payload.error || "Could not load jobs.")
+    const loaded = Array.isArray(payload.jobs) ? payload.jobs : []
+    setJobs(loaded)
+    return loaded
+  }
+
+  const searchForJobs = async (automatic = false) => {
+    setSearching(true)
+    setStatus(
+      automatic
+        ? "Your Opportunity Hunter is checking approved job feeds..."
+        : "Searching approved job feeds against your Career DNA..."
+    )
+
+    try {
+      const res = await fetch("/api/career/recommended-jobs", {
+        method: "POST",
+        credentials: "include",
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(payload.error || "Job search could not be completed.")
+
+      setSearchSummary(payload)
+      const refreshed = await loadJobs()
+      setStatus(
+        refreshed.length > 0
+          ? `Opportunity Hunter found ${refreshed.length} suitable role${refreshed.length === 1 ? "" : "s"}. Review each match before continuing.`
+          : "No safe matches were found in this search. You can refresh later or paste a job below."
+      )
+    } catch (error) {
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : "Approved job feeds are temporarily unavailable."
+      )
+    } finally {
+      setSearching(false)
+    }
+  }
+
   useEffect(() => {
     void (async () => {
       try {
-        const res = await fetch("/api/career/recommended-jobs", { credentials: "include" })
-        const payload = await res.json().catch(() => ({}))
-        if (!res.ok) {
-          setStatus(payload.error || "Could not load recommended jobs.")
-        } else {
-          setJobs(payload.jobs || [])
+        const loaded = await loadJobs()
+        if (loaded.length === 0 && !searchedEmptyFeed.current) {
+          searchedEmptyFeed.current = true
+          await searchForJobs(true)
         }
-      } catch {
-        setStatus("Could not load recommended jobs.")
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : "Could not load job opportunities.")
       } finally {
         setLoading(false)
       }
     })()
   }, [])
 
-  const assess = async (input: { jobId?: string; title?: string; company?: string; description?: string }) => {
+  const assess = async (input: {
+    jobId?: string
+    title?: string
+    company?: string
+    description?: string
+  }) => {
     setSubmitting(true)
-    setStatus("Analysing this role against your confirmed profile...")
+    setStatus("Analysing this role against your confirmed Career DNA...")
 
     try {
       const assessmentRes = await fetch("/api/career/job-assessment", {
@@ -86,55 +153,100 @@ export default function JobDiscoveryStage() {
   }
 
   if (loading) {
-    return <div style={{ textAlign: "center", padding: 24 }}>Loading job options...</div>
+    return <div style={{ textAlign: "center", padding: 24 }}>Loading your Opportunity Hunter...</div>
   }
 
   return (
-    <div style={{ maxWidth: 860, margin: "0 auto" }}>
+    <div style={{ maxWidth: 920, margin: "0 auto" }}>
       <div style={{ border: "1px solid #334155", borderRadius: 8, padding: 24, background: "#111827" }}>
-        <h1 style={{ marginTop: 0 }}>Choose a Job to Assess</h1>
-        <p>A match score needs a real job description. Select a saved role or paste one below.</p>
+        <div style={{ display: "flex", gap: 16, justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div>
+            <h1 style={{ margin: 0 }}>Jobs Found for You</h1>
+            <p style={{ marginBottom: 8 }}>
+              Opportunity Hunter searches approved public feeds and ranks roles against your verified Career DNA.
+            </p>
+            <p style={{ marginTop: 0, color: "#94a3b8", fontSize: 14 }}>
+              It never submits an application without your review and approval.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={searching || submitting}
+            onClick={() => void searchForJobs(false)}
+            style={{ padding: "10px 16px", background: "#0f766e", color: "white", border: "none", borderRadius: 6, fontWeight: 600, cursor: searching ? "wait" : "pointer", opacity: searching ? 0.65 : 1 }}
+          >
+            {searching ? "Searching..." : "Find Fresh Jobs"}
+          </button>
+        </div>
 
-        {jobs.length > 0 && (
-          <div style={{ marginBottom: 24 }}>
-            <h2 style={{ fontSize: 20 }}>Recommended Jobs</h2>
-            {jobs.map((job) => (
-              <button
-                key={job.id}
-                type="button"
-                disabled={submitting}
-                onClick={() => void assess({ jobId: job.id })}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  textAlign: "left",
-                  background: "#0b1220",
-                  color: "white",
-                  padding: 16,
-                  borderRadius: 6,
-                  marginBottom: 12,
-                  border: "1px solid #475569",
-                  cursor: submitting ? "wait" : "pointer",
-                }}
-              >
-                <strong>{job.title}</strong>
-                <span style={{ display: "block", marginTop: 6, color: "#cbd5e1" }}>
-                  {job.company} · {job.level}
-                </span>
-                <span style={{ display: "block", marginTop: 8, color: "#94a3b8", fontSize: 14 }}>
-                  {job.description.slice(0, 180)}{job.description.length > 180 ? "…" : ""}
-                </span>
-              </button>
-            ))}
+        {searchSummary && (
+          <div style={{ background: "#0b1220", padding: 12, borderRadius: 6, margin: "14px 0", color: "#cbd5e1", fontSize: 14 }}>
+            Checked {searchSummary.discovered} listings from {searchSummary.sources.join(" and ")} ·
+            {" "}{searchSummary.accepted} passed safety and relevance filters ·
+            {" "}{searchSummary.recommended} scored 75% or higher
           </div>
         )}
 
-        <div style={{ background: "#0b1220", padding: 18, borderRadius: 8, border: "1px solid #475569" }}>
-          <h2 style={{ marginTop: 0, fontSize: 20 }}>
-            {jobs.length === 0 ? "Paste a Job You Want" : "Assess Another Job"}
-          </h2>
+        {jobs.length > 0 ? (
+          <div style={{ margin: "20px 0 26px" }}>
+            {jobs.map((job) => (
+              <article
+                key={job.id}
+                style={{ background: "#0b1220", padding: 16, borderRadius: 8, marginBottom: 14, border: job.recommended ? "1px solid #10b981" : "1px solid #475569" }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+                  <div>
+                    <h2 style={{ margin: "0 0 6px", fontSize: 19 }}>{job.title}</h2>
+                    <p style={{ margin: 0, color: "#cbd5e1" }}>
+                      {job.company}
+                      {job.location ? ` · ${job.location}` : ""}
+                    </p>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <strong style={{ color: job.recommended ? "#34d399" : "#93c5fd" }}>{job.level}</strong>
+                    {job.recommended && <div style={{ color: "#34d399", fontSize: 13 }}>Recommended to review</div>}
+                  </div>
+                </div>
+
+                <p style={{ color: "#94a3b8", fontSize: 14, lineHeight: 1.5 }}>
+                  {job.description.slice(0, 320)}{job.description.length > 320 ? "…" : ""}
+                </p>
+
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  <button
+                    type="button"
+                    disabled={submitting || searching}
+                    onClick={() => void assess({ jobId: job.id })}
+                    style={{ padding: "10px 16px", background: "#3b82f6", color: "white", border: "none", borderRadius: 6, fontWeight: 600, cursor: submitting ? "wait" : "pointer" }}
+                  >
+                    Review Match
+                  </button>
+                  {job.applyUrl && (
+                    <a href={job.applyUrl} target="_blank" rel="noreferrer" style={{ color: "#93c5fd", padding: "9px 4px" }}>
+                      View original on {job.source || "source"}
+                    </a>
+                  )}
+                  {job.salary && <span style={{ color: "#cbd5e1", fontSize: 14 }}>{job.salary}</span>}
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div style={{ background: "#0b1220", padding: 16, borderRadius: 6, margin: "18px 0" }}>
+            <p style={{ margin: 0 }}>
+              {searching
+                ? "Opportunity Hunter is searching now..."
+                : "No suitable roles are stored yet. Select Find Fresh Jobs or use the manual fallback below."}
+            </p>
+          </div>
+        )}
+
+        <details style={{ background: "#0b1220", padding: 18, borderRadius: 8, border: "1px solid #475569" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 18 }}>
+            Manual fallback: paste a job
+          </summary>
           <p style={{ color: "#cbd5e1" }}>
-            Copy the title and full requirements from a job advert. The system will compare them with your confirmed CV evidence.
+            Use this only when you found a vacancy that Opportunity Hunter did not import.
           </p>
 
           <label style={{ display: "block", marginBottom: 12 }}>
@@ -160,7 +272,7 @@ export default function JobDiscoveryStage() {
           >
             {submitting ? "Assessing Job..." : "Assess This Job"}
           </button>
-        </div>
+        </details>
 
         {status && <div role="status" style={{ marginTop: 16, padding: 12, background: "#1e293b", borderRadius: 6 }}>{status}</div>}
       </div>
