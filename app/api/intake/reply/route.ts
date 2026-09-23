@@ -4,6 +4,7 @@ import { CLIENT_TRANSPARENCY_NOTE, proposalTemplate } from "@/lib/ai/outputQuali
 import { detectNegotiationScenario, generateNegotiationReply } from "@/lib/negotiation/negotiationEngine";
 import { createInvoiceRecord } from "@/lib/payments/invoiceGenerator";
 import { generatePaymentLink, selectPaymentMethod } from "@/lib/payments/paymentIntelligence";
+import type { PaymentMethod } from "@/lib/payments/paymentIntelligence";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { recordSkillPractice } from "@/lib/skills/progressEngine";
 
@@ -99,9 +100,9 @@ function mapScenarioToStage(scenario: string): string {
 const LICENSE_OFFER = [
   "We provide an AI-powered execution system that:",
   "",
-  "• automates development workflows",
-  "• handles repetitive engineering tasks",
-  "• improves delivery speed",
+  "â€¢ automates development workflows",
+  "â€¢ handles repetitive engineering tasks",
+  "â€¢ improves delivery speed",
   "",
   "We license this system to companies looking to scale output without increasing headcount.",
   "",
@@ -109,10 +110,24 @@ const LICENSE_OFFER = [
 ].join("\n");
 
 export async function POST(req: Request) {
+  const expectedSecret = process.env.CRON_SECRET;
+  const authorization = req.headers.get("authorization");
+
+  if (!expectedSecret) {
+    return Response.json(
+      { error: "Intake-reply authentication is not configured" },
+      { status: 503 }
+    );
+  }
+
+  if (authorization !== `Bearer ${expectedSecret}`) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await req.json();
   const { message, job, userId, license, client_id, email, country, company_size, origin } = body;
 
-  // 🔒 License gate — no license, no access.
+  // ðŸ”’ License gate â€” no license, no access.
   if (!license?.active) {
     return new Response("License inactive", { status: 403 });
   }
@@ -160,7 +175,12 @@ export async function POST(req: Request) {
   const upsertRes = await supabaseServer.from("deals").upsert(
     {
       user_id: normalizedUserId,
+      client_id: clientId,
       job_id: normalizedJobId,
+      title: String(job?.title || "Opportunity"),
+      job_title: String(job?.title || "Opportunity"),
+      company: String(job?.company || ""),
+      deal_type: "job",
       status: stage,
       stage,
       last_message: message,
@@ -272,7 +292,7 @@ export async function POST(req: Request) {
     skillProgressWarning = error instanceof Error ? error.message : "Failed to record skill progress.";
   }
 
-  let paymentMethod: "paystack" | "paypal" | "bank" | null = null;
+  let paymentMethod: PaymentMethod | null = null;
   let paymentLink: string | null = null;
 
   if (stage === "closed") {
@@ -287,7 +307,7 @@ export async function POST(req: Request) {
 
     paymentMethod = selectPaymentMethod(clientProfile);
 
-    if (paymentMethod !== "bank") {
+    if (paymentMethod && paymentMethod !== "bank") {
       paymentLink = await generatePaymentLink({
         method: paymentMethod,
         amount: Number(job?.budget || amount || 100),

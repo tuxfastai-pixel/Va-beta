@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAdminRole } from "@/lib/auth/serverAuth";
 import { supabaseServer } from "@/lib/supabaseServer";
 
 function amountOf(value: unknown): number {
@@ -7,6 +8,12 @@ function amountOf(value: unknown): number {
 }
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAdminRole();
+
+  if ("response" in auth) {
+    return auth.response;
+  }
+
   const companyId = String(req.nextUrl.searchParams.get("company_id") || "").trim();
 
   if (!companyId) {

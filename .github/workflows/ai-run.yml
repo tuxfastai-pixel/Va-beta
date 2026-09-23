@@ -1,0 +1,16 @@
+name: Run AI Engine Manually
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-ai:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call Orchestrator
+        run: |
+          curl --fail-with-body -X POST https://va-beta-two.vercel.app/api/run-orchestrator \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d '{"auto": true}'

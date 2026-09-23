@@ -1,4 +1,10 @@
 import { askSmartQuestion, closeDeal, handlePriceObjection, handleTrustObjection, trustReply } from "@/lib/psychology/conversionPsychology";
+import { buildTrustResponse, localizeTrustResponse } from "@/lib/ai/trustResponder";
+import { detectTrustConcern } from "@/lib/ai/trustTrigger";
+import { attachPortfolio } from "@/lib/ai/autoTrustLink";
+import { buildCloseResponse, detectCloseIntent } from "@/lib/ai/closeDetector";
+import { generatePlatformResponse } from "@/lib/ai/platformResponder";
+import { resolveScenario } from "@/lib/ai/conversationTrainer";
 
 export type NegotiationScenario =
   | "price_push"
@@ -56,6 +62,24 @@ type ClientMessageOptions = {
 export function handleClientMessage(message: string, options: ClientMessageOptions = {}) {
   const normalized = String(message || "").toLowerCase();
   const stage = getConversationStage(message);
+  const trustTrigger = detectTrustConcern(message);
+  const closeIntent = detectCloseIntent(message);
+  const trainedScenario = resolveScenario(message);
+
+  if (trustTrigger) {
+    const trustReplyText = buildTrustResponse(trustTrigger);
+    if (trustReplyText) {
+      return attachPortfolio(localizeTrustResponse(trustReplyText, "GLOBAL"));
+    }
+  }
+
+  if (closeIntent) {
+    return buildCloseResponse("inbox setup and follow-up structure");
+  }
+
+  if (trainedScenario) {
+    return trainedScenario.response;
+  }
 
   if (options.clientReady || stage === "close") {
     return closeDeal();
@@ -81,6 +105,7 @@ export function generateNegotiationReply(
   _job: Record<string, unknown>
 ): string {
   const jobSummary = String(_job.title || _job.description || "this work");
+  const platformResponse = generatePlatformResponse(String(_job.platform || ""), _job);
 
   switch (scenario) {
     case "price_push":
@@ -93,9 +118,9 @@ export function generateNegotiationReply(
       return `${trustReply()}\n\nWhat I bring is consistent execution, fast turnaround, and reliable communication so you do not have to manage rework later.`;
 
     case "ready_to_close":
-      return closeDeal();
+      return `${closeDeal()}\n\n${buildCloseResponse("the first priority task")}`;
 
     default:
-      return handleClientMessage(String(_job.description || "general inquiry"), { clientReady: false });
+      return `${platformResponse}\n\n${handleClientMessage(String(_job.description || "general inquiry"), { clientReady: false })}`;
   }
 }

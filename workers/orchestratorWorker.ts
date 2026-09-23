@@ -87,6 +87,14 @@ async function triggerDeploy(task: EngineeringTask) {
     return;
   }
 
+  if (!task.approved_at) {
+    await markNeedsApproval(task.id, "Deployment requires explicit human approval");
+    await log(task, "warn", "Deploy hook blocked", {
+      reason: "Deployment requires explicit human approval",
+    });
+    return;
+  }
+
   try {
     const result = await execAsync(deployCommand, { timeout: 300000 });
     await log(task, "info", "Deploy hook executed", {
@@ -106,24 +114,15 @@ async function rollbackLastChange(task: EngineeringTask, reason: string) {
   if (process.env.ENGINEERING_ENABLE_ROLLBACK !== "true") {
     await log(task, "warn", "Rollback skipped", {
       reason,
-      hint: "Set ENGINEERING_ENABLE_ROLLBACK=true to enable git rollback",
+      hint: "Automatic rollback is disabled",
     });
     return;
   }
 
-  try {
-    const result = await execAsync("git reset --hard HEAD~1", { timeout: 300000 });
-    await log(task, "warn", "Rollback executed", {
-      reason,
-      stdout: (result.stdout || "").slice(0, 2000),
-      stderr: (result.stderr || "").slice(0, 2000),
-    });
-  } catch (error) {
-    await log(task, "error", "Rollback failed", {
-      reason,
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
+  await log(task, "warn", "Automatic rollback blocked", {
+    reason,
+    hint: "Review repository changes manually; destructive automated rollback is not permitted",
+  });
 }
 
 async function markNeedsApproval(taskId: string, reason: string) {

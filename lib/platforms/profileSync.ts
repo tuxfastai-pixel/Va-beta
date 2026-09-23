@@ -1,6 +1,16 @@
 import { generateProfileDescription } from "@/lib/profile/generateProfile.ts";
 
-export const platforms = ["Upwork", "Fiverr", "LinkedIn", "Freelancer", "PayPal"] as const;
+export const platforms = [
+  "Upwork",
+  "Fiverr",
+  "LinkedIn",
+  "Freelancer",
+  "PayPal",
+  "FlexJobs",
+  "PNet",
+  "CareerJunction",
+  "Careers24",
+] as const;
 
 export type PlatformName = (typeof platforms)[number];
 export type PlatformStatus = "pending" | "completed";
@@ -18,6 +28,10 @@ export const platformLinks: Record<PlatformName, string> = {
   LinkedIn: "https://www.linkedin.com",
   Freelancer: "https://www.freelancer.com",
   PayPal: "https://www.paypal.com",
+  FlexJobs: "https://www.flexjobs.com",
+  PNet: "https://www.pnet.co.za",
+  CareerJunction: "https://www.careerjunction.co.za",
+  Careers24: "https://www.careers24.com",
 };
 
 const PLATFORM_CAPABILITY_PREFIX = "__platform__:";
@@ -28,6 +42,10 @@ const platformChecklists: Record<PlatformName, string[]> = {
   LinkedIn: ["Create profile", "Add skills", "Turn on Open to Work"],
   Freelancer: ["Open account", "Set hourly rate", "Complete profile summary"],
   PayPal: ["Use same email", "Verify account", "Connect payout method"],
+  FlexJobs: ["Create account", "Set remote preferences", "Upload profile summary"],
+  PNet: ["Create account", "Complete CV", "Set job alerts"],
+  CareerJunction: ["Create profile", "Add skills", "Enable daily alerts"],
+  Careers24: ["Create profile", "Upload CV", "Configure filters"],
 };
 
 export function normalizePlatformName(value: string | null | undefined): PlatformName | null {
@@ -153,6 +171,10 @@ export function generatePlatformSync(profile: ProfileSyncInput) {
       Fiverr: `I will deliver reliable ${leadSkills} support with clear updates, smart automation, and quick turnaround.`,
       Freelancer: `Experienced in ${leadSkills}, workflow setup, and execution support for growing teams.`,
       PayPal: "Use the same verified email for smooth payouts across your earning platforms.",
+      FlexJobs: `I deliver structured ${leadSkills} support with reliable communication and fast turnaround.`,
+      PNet: `I provide dependable ${leadSkills} support focused on consistency and accurate delivery.`,
+      CareerJunction: `I help teams stay organized with clear admin execution, follow-ups, and reporting.`,
+      Careers24: `Reliable remote support in ${leadSkills} with structured workflow and clear updates.`,
     } as Record<PlatformName, string>,
   };
 }

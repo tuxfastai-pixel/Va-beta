@@ -1,4 +1,4 @@
-import { redis } from "@/lib/redis";
+﻿import { redis } from "@/lib/redisSafe";
 
 export async function cacheJobs(jobs: unknown[]) {
   if (!redis) return;

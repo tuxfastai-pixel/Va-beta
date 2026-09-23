@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionUser } from "@/lib/auth/sessionUser";
 import { getUserAmbition, setUserAmbition } from "@/lib/autonomy/ambitionEngine";
 
 /**
@@ -7,6 +8,12 @@ import { getUserAmbition, setUserAmbition } from "@/lib/autonomy/ambitionEngine"
  */
 export async function GET(req: NextRequest) {
   try {
+    const session = await getSessionUser();
+
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const userId = req.nextUrl.searchParams.get("userId");
 
     if (!userId) {
@@ -14,6 +21,10 @@ export async function GET(req: NextRequest) {
         { error: "userId parameter required" },
         { status: 400 }
       );
+    }
+
+    if (userId !== session.userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const ambition = await getUserAmbition(userId);
@@ -37,6 +48,12 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
+    const session = await getSessionUser();
+
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await req.json();
     const { userId, level } = body;
 
@@ -45,6 +62,10 @@ export async function POST(req: NextRequest) {
         { error: "userId and level required" },
         { status: 400 }
       );
+    }
+
+    if (userId !== session.userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     if (!["normal", "high", "elite"].includes(level)) {

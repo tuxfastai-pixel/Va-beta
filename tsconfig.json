@@ -25,11 +25,11 @@
   },
   "include": [
     "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
+    "app/layout.tsx",
+    "app/page.tsx",
+    "app/globals.css",
     ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts",
-    "**/*.mts"
+    ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "mobile"]
+  "exclude": ["node_modules", "mobile", "app/admin", "app/api", "app/dashboard", "app/workflow", "app/clients", "app/lead", "lib"]
 }

@@ -1,15 +1,35 @@
-import { Queue } from "bullmq";
+import type { Queue } from "bullmq";
 
-if (!process.env.UPSTASH_REDIS_REST_URL) {
-  console.log("⚠️ Redis not configured — agentQueue disabled");
+const queuesEnabled = process.env.ENABLE_QUEUES === "true";
+
+if (!queuesEnabled) {
+  console.log("🚫 Queues disabled");
 }
 
-export const agentQueue = process.env.REDIS_HOST
-  ? new Queue("agentTasks", {
+export let agentQueue: Queue | null = null;
+
+export async function getAgentQueue() {
+  if (!queuesEnabled) {
+    return null;
+  }
+
+  const redisHost = process.env.REDIS_HOST?.trim();
+  const redisPort = process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) : undefined;
+
+  if (!redisHost || redisHost === "127.0.0.1" || redisHost === "localhost") {
+    return null;
+  }
+
+  if (!agentQueue) {
+    const { Queue } = await import("bullmq");
+    agentQueue = new Queue("agentTasks", {
       connection: {
-        host: process.env.REDIS_HOST,
-        port: Number(process.env.REDIS_PORT ?? 6379),
+        host: redisHost,
+        ...(redisPort ? { port: redisPort } : {}),
       },
-    })
-  : null;
+    });
+  }
+
+  return agentQueue;
+}
 

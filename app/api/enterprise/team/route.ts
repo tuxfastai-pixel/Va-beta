@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { requireAdminRole } from "@/lib/auth/serverAuth";
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAdminRole();
+
+  if ("response" in auth) {
+    return auth.response;
+  }
   const companyId = String(req.nextUrl.searchParams.get("company_id") || "").trim();
   if (!companyId) {
     return NextResponse.json({ error: "company_id is required" }, { status: 400 });
@@ -21,6 +27,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAdminRole();
+
+  if ("response" in auth) {
+    return auth.response;
+  }
   try {
     const body = await req.json();
     const companyId = String(body?.company_id || "").trim();

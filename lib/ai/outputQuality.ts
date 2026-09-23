@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import { executeModelRequest, extractTextFromCompletion } from "@/lib/ai/executeModelRequest";
 
 export const CLIENT_TRANSPARENCY_NOTE = "This work was completed using advanced tools to ensure speed and accuracy.";
 
@@ -100,8 +100,7 @@ export async function selfValidate(output: string) {
   }
 
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const completion = await openai.chat.completions.create({
+    const completion = await executeModelRequest({
       model: "gpt-4o-mini",
       messages: [
         {
@@ -110,12 +109,17 @@ export async function selfValidate(output: string) {
         },
         { role: "user", content: output },
       ],
-      response_format: { type: "json_object" },
+      telemetry: {
+        module: "lib/ai/outputQuality.ts",
+      },
+      request: {
+        response_format: { type: "json_object" },
+      },
     });
 
     return {
       ...baseReview,
-      summary: completion.choices[0].message.content?.trim() || "AI self-check completed.",
+      summary: extractTextFromCompletion(completion) || "AI self-check completed.",
     };
   } catch {
     return {

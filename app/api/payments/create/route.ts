@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStripe } from "@/lib/payments/stripe";
+import { getSessionUser } from "@/lib/auth/sessionUser";
 
 type CreatePaymentBody = {
   amount?: number;
@@ -12,10 +13,19 @@ type CreatePaymentBody = {
 };
 
 export async function POST(req: NextRequest) {
+  const authenticatedUser = await getSessionUser();
+
+  if (!authenticatedUser) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const body = (await req.json().catch(() => null)) as CreatePaymentBody | null;
 
   if (!body || typeof body !== "object") {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  if (body.user_id && body.user_id !== authenticatedUser.userId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const amount = Number(body.amount || 0);
@@ -23,7 +33,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "amount must be a positive number" }, { status: 400 });
   }
 
-  const origin = String(body.origin || "").trim() || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const origin = String(process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin).replace(/\/$/, "");
   const currency = String(body.currency || "usd").trim().toLowerCase();
 
   try {
@@ -48,7 +58,7 @@ export async function POST(req: NextRequest) {
       cancel_url: `${origin}/cancel`,
       metadata: {
         job_id: String(body.job_id || ""),
-        user_id: String(body.user_id || ""),
+        user_id: authenticatedUser.userId,
         client_id: String(body.client_id || ""),
       },
     });

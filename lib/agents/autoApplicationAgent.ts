@@ -1,6 +1,6 @@
-import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 import { config as loadEnv } from "dotenv";
+import { executeModelRequest, extractTextFromCompletion } from "@/lib/ai/executeModelRequest";
 
 loadEnv({ path: ".env.local" });
 
@@ -12,17 +12,13 @@ type ApplicationJob = {
   description?: string | null;
 };
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 export async function autoApplicationAgent(userId: string, job: ApplicationJob, resume: string, profile: string) {
-  const completion = await openai.chat.completions.create({
+  const completion = await executeModelRequest({
     model: "gpt-4.1-mini",
     messages: [
       {
@@ -46,9 +42,14 @@ Generate:
 `,
       },
     ],
+    telemetry: {
+      module: "lib/agents/autoApplicationAgent.ts",
+      userId,
+      jobId: job.id || null,
+    },
   });
 
-  const result = completion.choices[0].message.content || "";
+  const result = extractTextFromCompletion(completion);
 
   await supabase.from("applications").insert({
     user_id: userId,

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSessionUser } from "@/lib/auth/sessionUser";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { enhanceWithAICapabilities } from "@/lib/profile/generateProfile.ts";
 import { recordSkillPractice } from "@/lib/skills/progressEngine";
@@ -45,14 +46,40 @@ function mapRowsToPlatforms(rows: PlatformRow[] | null, fallbackPlatform?: Platf
   return buildPlatformStates(statusByName);
 }
 
+function mergePlatformStates(...states: Partial<Record<PlatformName, PlatformStatus>>[]) {
+  const merged: Partial<Record<PlatformName, PlatformStatus>> = {};
+
+  for (const state of states) {
+    for (const [name, status] of Object.entries(state) as Array<[PlatformName, PlatformStatus]>) {
+      if (status === "completed") {
+        merged[name] = "completed";
+      } else if (!(name in merged)) {
+        merged[name] = "pending";
+      }
+    }
+  }
+
+  return buildPlatformStates(merged);
+}
+
 function isMissingUserPlatformsTable(error: { code?: string; message?: string } | null | undefined) {
   const message = String(error?.message || "").toLowerCase();
   return message.includes("user_platforms") && message.includes("could not find the table");
 }
 
 export async function POST(req: Request) {
+  const session = await getSessionUser();
+
+  if (!session?.userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = (await req.json()) as CompleteRequest;
   const userId = body.userId;
+
+  if (userId !== session.userId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const platform = normalizePlatformName(body.platform);
 
   if (!userId || !platform) {
@@ -89,22 +116,16 @@ export async function POST(req: Request) {
   });
 
   const nextCapabilities = hasAICapabilitiesColumn
-    ? (isMissingUserPlatformsTable(saveError)
-      ? addPlatformCapabilityMarker(enhancedProfile.ai_capabilities, platform)
-      : enhancedProfile.ai_capabilities)
+    ? addPlatformCapabilityMarker(enhancedProfile.ai_capabilities, platform)
     : undefined;
-  const nextPlan = isMissingUserPlatformsTable(saveError)
-    ? addPlatformMarkerToPlan(currentPlan, platform)
-    : currentPlan;
+  const nextPlan = addPlatformMarkerToPlan(currentPlan, platform);
 
   let profileUpdateError: { message?: string } | null = null;
 
   if (profile) {
     const updates: Record<string, unknown> = {};
 
-    if (isMissingUserPlatformsTable(saveError)) {
-      updates.plan = nextPlan;
-    }
+    updates.plan = nextPlan;
 
     if (hasAICapabilitiesColumn && nextCapabilities) {
       updates.ai_capabilities = nextCapabilities;
@@ -141,7 +162,17 @@ export async function POST(req: Request) {
       .select("platform, status")
       .eq("user_id", userId);
 
-    platformRows = mapRowsToPlatforms((rows as PlatformRow[] | null) ?? null, platform);
+    const rowStatuses: Partial<Record<PlatformName, PlatformStatus>> = {};
+    for (const item of mapRowsToPlatforms((rows as PlatformRow[] | null) ?? null, platform)) {
+      rowStatuses[item.name] = item.status;
+    }
+
+    platformRows = mergePlatformStates(
+      rowStatuses,
+      extractPlatformStatusesFromPlan(nextPlan),
+      extractPlatformStatusesFromCapabilities(nextCapabilities),
+      { [platform]: "completed" }
+    );
     statusWarning = statusError?.message || profileUpdateError?.message;
     persisted = !saveError && !profileUpdateError;
   }

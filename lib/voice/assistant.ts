@@ -1,17 +1,14 @@
-export type VoiceAction = "fetch_jobs" | "auto_apply" | "reply_client" | "check_earnings" | "unknown";
+export type VoiceAction = "fetch_jobs" | "auto_apply" | "reply_client" | "check_earnings" | "interview_prep" | "unknown";
 
 import { setUserMode } from "@/lib/mode/modeManager";
-
-async function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return null;
-
-  const { default: OpenAI } = await import("openai");
-  return new OpenAI({ apiKey });
-}
+import { executeSpeechRequest, executeTranscriptionRequest } from "@/lib/ai/executeModelRequest";
 
 export function handleVoiceCommand(text: string): { action: VoiceAction; message: string } {
   const command = String(text || "").toLowerCase();
+
+  if (command.includes("interview") || command.includes("prep me") || command.includes("prepare me")) {
+    return { action: "interview_prep", message: "Building interview prep aligned to your active resume identity." };
+  }
 
   if (command.includes("find jobs") || command.includes("fetch jobs")) {
     return { action: "fetch_jobs", message: "Opening jobs now." };
@@ -31,7 +28,7 @@ export function handleVoiceCommand(text: string): { action: VoiceAction; message
 
   return {
     action: "unknown",
-    message: "I heard you, but I need a clearer command like find jobs or apply to everything.",
+    message: "I heard you, but I need a clearer command like find jobs, interview prep, or apply to everything.",
   };
 }
 
@@ -63,30 +60,30 @@ export async function handleVoiceCommandModeSwitch(text: string, userId: string)
 }
 
 export async function transcribeWithWhisper(audioFile: File): Promise<string> {
-  const client = await getOpenAIClient();
-  if (!client) {
-    throw new Error("OPENAI_API_KEY is not configured");
-  }
-
-  const transcription = await client.audio.transcriptions.create({
+  const transcription = await executeTranscriptionRequest({
     file: audioFile,
     model: "gpt-4o-mini-transcribe",
+    telemetry: {
+      module: "lib/voice/assistant.ts",
+    },
   });
 
   return transcription.text || "";
 }
 
 export async function synthesizeVoiceResponse(text: string): Promise<ArrayBuffer | null> {
-  const client = await getOpenAIClient();
-  if (!client) {
+  try {
+    const response = await executeSpeechRequest({
+      model: "gpt-4o-mini-tts",
+      voice: "alloy",
+      input: text,
+      telemetry: {
+        module: "lib/voice/assistant.ts",
+      },
+    });
+
+    return response.arrayBuffer();
+  } catch {
     return null;
   }
-
-  const response = await client.audio.speech.create({
-    model: "gpt-4o-mini-tts",
-    voice: "alloy",
-    input: text,
-  });
-
-  return response.arrayBuffer();
 }

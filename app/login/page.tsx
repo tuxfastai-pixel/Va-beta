@@ -31,8 +31,8 @@ export default function LoginPage() {
         return;
       }
 
-      // Redirect to client portal
-      router.push("/client-portal");
+      const payload = (await res.json().catch(() => ({}))) as { redirectTo?: string };
+      router.push(payload.redirectTo || "/client-portal");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
       setLoading(false);

@@ -1,8 +1,21 @@
 import { supabaseServer } from "@/lib/supabaseServer";
+import { deriveSkillState, type SkillState } from "@/lib/skills/aiAssistedSkillLayer";
 
 export function evolveSkill(skill: string, usage: number) {
   void skill;
   return Math.min(100, Math.max(0, Math.round(usage * 10)));
+}
+
+export function getSkillState(input: {
+  usage: number;
+  aiSupported?: boolean;
+  accuracyScore?: number;
+}): SkillState {
+  return deriveSkillState({
+    practiceCount: input.usage,
+    hasAiExecution: input.aiSupported,
+    accuracyScore: input.accuracyScore,
+  });
 }
 
 function isMissingSkillTable(error: { message?: string } | null | undefined) {

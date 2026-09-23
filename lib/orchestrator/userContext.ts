@@ -6,8 +6,16 @@ export type ProfileRow = {
   id: string;
   plan?: string | null;
   ai_capabilities?: unknown;
+  interests?: string[] | string | null;
+  desired_income?: number | string | null;
+  experience_summary?: string | null;
+  location?: string | null;
+  platform_targets?: string[] | string | null;
   system_paused?: boolean | null;
   safe_mode?: boolean | null;
+  careers?: string[] | null;
+  primary_career?: string | null;
+  secondary_careers?: string[] | null;
 };
 
 async function safeLoad(table: string, userId: string, filterColumn = "user_id") {
@@ -42,6 +50,29 @@ export async function buildUserContext(profile: ProfileRow, options: { autoApply
   const trust = await getTrustScore(userId);
   const trusted = ["trusted", "elite"].includes(String(trust.level || "new"));
 
+  const careers = Array.isArray(profile.careers)
+    ? profile.careers.filter((career): career is string => typeof career === "string" && career.trim().length > 0)
+    : [];
+
+  const primaryCareer = String(profile.primary_career || "").trim() || careers[0] || null;
+  const secondaryCareers = Array.isArray(profile.secondary_careers)
+    ? profile.secondary_careers.filter((career): career is string => typeof career === "string" && career.trim().length > 0)
+    : careers.slice(1);
+
+  const interests = Array.isArray(profile.interests)
+    ? profile.interests.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : String(profile.interests || "")
+      .split(/[;,]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+  const platformTargets = Array.isArray(profile.platform_targets)
+    ? profile.platform_targets.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : String(profile.platform_targets || "")
+      .split(/[;,]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+
   return {
     id: userId,
     plan: planValue,
@@ -54,6 +85,14 @@ export async function buildUserContext(profile: ProfileRow, options: { autoApply
     autoApplyEnabled: trusted ? options.autoApplyEnabled : false,
     autonomous_mode: options.autonomousMode,
     trusted,
+    careers: primaryCareer ? Array.from(new Set([primaryCareer, ...secondaryCareers])) : careers,
+    primary_career: primaryCareer,
+    secondary_careers: secondaryCareers,
+    interests,
+    desired_income: Number(profile.desired_income || 0) || undefined,
+    experience_summary: String(profile.experience_summary || "").trim() || undefined,
+    location: String(profile.location || "").trim() || undefined,
+    platform_targets: platformTargets,
     system_paused: Boolean(profile.system_paused ?? false),
     safe_mode: Boolean(profile.safe_mode ?? true),
     allowAutoSendMessages: !Boolean(profile.safe_mode ?? true),

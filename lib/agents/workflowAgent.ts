@@ -1,11 +1,7 @@
-import OpenAI from "openai";
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import { executeModelRequest, extractTextFromCompletion } from "@/lib/ai/executeModelRequest";
 
 export async function workflowAgent(jobDescription: string) {
-  const completion = await openai.chat.completions.create({
+  const completion = await executeModelRequest({
     model: "gpt-4.1-mini",
     messages: [
       {
@@ -24,7 +20,10 @@ Return list of tasks with:
 `,
       },
     ],
+    telemetry: {
+      module: "lib/agents/workflowAgent.ts",
+    },
   });
 
-  return completion.choices[0].message.content;
+  return extractTextFromCompletion(completion);
 }

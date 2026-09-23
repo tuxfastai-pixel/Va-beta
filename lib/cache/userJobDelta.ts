@@ -1,4 +1,4 @@
-import { redis } from "@/lib/redis";
+import { redis } from "@/lib/redisSafe";
 
 export async function hasUserSeenJob(userId: string, jobId: string) {
   if (!redis) return false;

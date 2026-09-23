@@ -1,6 +1,7 @@
-import { agentQueue } from "./queue"
-
 export async function runDailyAgents(userId: string) {
+  const { getAgentQueue } = await import("./queue");
+  const agentQueue = await getAgentQueue();
+
   if (!agentQueue) {
     console.log("⚠️ Redis not configured — skipping daily agents");
     return;

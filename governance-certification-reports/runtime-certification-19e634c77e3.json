@@ -1,0 +1,54 @@
+{
+  "id": "runtime-certification-19e634c77e3",
+  "generatedAt": "2026-05-26T08:00:16.356Z",
+  "stages": [
+    {
+      "id": "deterministic-validation",
+      "label": "Deterministic validation",
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 2135502,
+      "command": "node --loader ts-node/esm scripts/run-deterministic-validation.ts"
+    },
+    {
+      "id": "constitutional-simulation",
+      "label": "Constitutional simulation",
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 17058,
+      "command": "node --loader ts-node/esm --test tests/governance/constitutional-simulation.test.ts"
+    },
+    {
+      "id": "human-trust-regression",
+      "label": "Human trust regression",
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 13417,
+      "command": "node --loader ts-node/esm --test tests/trust/human-trust-regression.test.ts"
+    },
+    {
+      "id": "governance-chaos",
+      "label": "Governance chaos testing",
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 12920,
+      "command": "node --loader ts-node/esm --test tests/governance/governance-chaos.test.ts"
+    },
+    {
+      "id": "replay-certification",
+      "label": "Replay certification",
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 10046,
+      "command": "node --loader ts-node/esm --test tests/replay/*.test.ts"
+    }
+  ],
+  "summary": {
+    "totalStages": 5,
+    "passedStages": 5,
+    "failedStages": 0,
+    "totalDurationMs": 2188943,
+    "certified": true
+  },
+  "checksum": "20f1735e8f3e0eafb1c066a7a7c579d98c714f33ab343d475546802ae65c5ad1"
+}

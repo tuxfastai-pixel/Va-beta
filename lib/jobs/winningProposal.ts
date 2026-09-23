@@ -1,5 +1,8 @@
 import { confidenceScore, humanize, proposalTemplate, validateOutput, varySentence } from "@/lib/ai/outputQuality";
+import { detectCareerFromJob } from "@/lib/ai/careerDetector";
+import { buildPricingSection } from "@/lib/ai/pricingStrategy";
 import { addUrgencyPersonalization, applyPsychology } from "@/lib/psychology/conversionPsychology";
+import { generatePlatformResponse } from "@/lib/ai/platformResponder";
 
 export type ProposalTone = "professional" | "friendly" | "assertive";
 
@@ -145,4 +148,54 @@ export async function generateWinningProposal(job: ProposalJob, user: ProposalUs
   }
 
   return proposal;
+}
+
+function buildTeachingProposal(job: ProposalJob) {
+  return `I can support this teaching project with clear lesson flow, practical examples, and consistent communication tailored to learner outcomes for ${job.title || "this role"}.`;
+}
+
+function buildAdminProposal(job: ProposalJob) {
+  return `I can support this admin project with organized execution, reliable updates, and efficient handling of tasks for ${job.title || "this role"}.`;
+}
+
+function buildGeneralProposal(job: ProposalJob) {
+  return `I can support this project with efficient workflows, strong communication, and reliable delivery for ${job.title || "this role"}.`;
+}
+
+export function generateProposal(
+  job: ProposalJob,
+  profile: { careers?: string[]; primary_career?: string | null },
+  options?: { price?: { recommended: number; anchor: number }; strategy?: string }
+) {
+  const careers = Array.isArray(profile.careers) && profile.careers.length > 0
+    ? profile.careers
+    : [String(profile.primary_career || "general")];
+
+  const matchedCareer = detectCareerFromJob(job, careers);
+  let content = "";
+
+  switch (matchedCareer) {
+    case "teacher":
+      content = buildTeachingProposal(job);
+      break;
+    case "admin":
+      content = buildAdminProposal(job);
+      break;
+    default:
+      content = buildGeneralProposal(job);
+      break;
+  }
+
+  if (options?.price && options?.strategy) {
+    content = `${content}\n\n${buildPricingSection(options.price, options.strategy)}`;
+  }
+
+  const platformResponse = generatePlatformResponse(String((job as { platform?: unknown }).platform || ""), {
+    title: job.title,
+    company: job.company,
+  });
+
+  content = `${platformResponse}\n\n${content}\n\nWould you like me to begin with the first priority step?`;
+
+  return content;
 }

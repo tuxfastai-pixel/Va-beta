@@ -37,6 +37,14 @@ export default function LandingPage() {
             View Conversion Dashboard
           </a>
         </div>
+        <div className={styles.authRow}>
+          <a className={styles.authPrimaryCta} href="/signup">
+            Create Pilot Account
+          </a>
+          <a className={styles.authSecondaryCta} href="/signin">
+            Signin
+          </a>
+        </div>
       </section>
 
       <section className={styles.proofGrid}>

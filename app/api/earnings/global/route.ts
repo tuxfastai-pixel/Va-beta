@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSessionUser } from "@/lib/auth/sessionUser";
 import { createClient } from "@supabase/supabase-js";
 import { buildTransparentEarningsSummary } from "@/lib/earnings/tracker";
 
@@ -82,10 +83,11 @@ function aggregateRows(rows: EarningsRow[]) {
   };
 }
 
-async function loadEarningsRows(): Promise<EarningsRow[]> {
+async function loadEarningsRows(userId: string): Promise<EarningsRow[]> {
   const withAiAssisted = await supabase
     .from("earnings")
-    .select("amount, currency, ai_assisted, platform, status");
+    .select("amount, currency, ai_assisted, platform, status")
+    .eq("user_id", userId);
 
   if (!withAiAssisted.error) {
     return (withAiAssisted.data || []) as EarningsRow[];
@@ -101,7 +103,8 @@ async function loadEarningsRows(): Promise<EarningsRow[]> {
   ) {
     const fallbackWithCurrency = await supabase
       .from("earnings")
-      .select("amount, currency, platform, status");
+      .select("amount, currency, platform, status")
+      .eq("user_id", userId);
 
     if (!fallbackWithCurrency.error) {
       return ((fallbackWithCurrency.data || []) as Array<{ amount: number | null; currency?: string | null }>).map((row) => ({
@@ -112,7 +115,8 @@ async function loadEarningsRows(): Promise<EarningsRow[]> {
 
     const legacyFallback = await supabase
       .from("earnings")
-      .select("amount");
+      .select("amount")
+      .eq("user_id", userId);
 
     if (!legacyFallback.error) {
       return ((legacyFallback.data || []) as Array<{ amount: number | null }>).map((row) => ({
@@ -129,7 +133,12 @@ async function loadEarningsRows(): Promise<EarningsRow[]> {
 }
 
 export async function GET() {
-  const earningsRows = await loadEarningsRows();
+  const session = await getSessionUser();
+
+  if (!session?.userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const earningsRows = await loadEarningsRows(session.userId);
 
   if (earningsRows.length > 0) {
     return NextResponse.json(aggregateRows(earningsRows));
@@ -137,7 +146,8 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("active_jobs")
-    .select("*");
+    .select("*")
+    .eq("user_id", session.userId);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

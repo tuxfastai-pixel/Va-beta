@@ -44,3 +44,20 @@ yarn-error.log*
 next-env.d.ts
 
 .vercel
+
+.env*.local
+
+# Local preserved builds and guarded safety copies
+/.next.group*-before/
+/.next.group*-failed/
+*-before
+
+# Keep the safe environment-variable template in version control
+!.env.example
+
+# Local diagnostics and runtime artifacts
+/.tmp*
+/tmp/
+/.runtime/
+/*.log
+*.backup

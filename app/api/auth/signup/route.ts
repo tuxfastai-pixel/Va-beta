@@ -10,6 +10,10 @@ export async function POST(req: Request) {
     const email = String(body?.email || "").trim().toLowerCase();
     const password = String(body?.password || "");
     const name = String(body?.name || "").trim();
+    const allowed = (process.env.ALLOWED_USER_EMAILS || "")
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean);
 
     if (!email || !password) {
       return NextResponse.json(
@@ -22,6 +26,13 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { success: false, error: "password must be at least 8 characters" },
         { status: 400 }
+      );
+    }
+
+    if (allowed.length > 0 && !allowed.includes(email)) {
+      return NextResponse.json(
+        { success: false, error: "Access restricted" },
+        { status: 403 }
       );
     }
 
@@ -80,6 +91,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
+      onboardingCompleted: false,
+      redirectTo: "/onboarding",
       user: newUser,
     });
   } catch (err: unknown) {

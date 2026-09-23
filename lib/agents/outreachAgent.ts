@@ -1,11 +1,7 @@
-import OpenAI from "openai";
 import { config as loadEnv } from "dotenv";
+import { executeModelRequest, extractTextFromCompletion } from "@/lib/ai/executeModelRequest";
 
 loadEnv({ path: ".env.local" });
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 type OutreachProspect = {
   company_name?: string | null;
@@ -13,7 +9,7 @@ type OutreachProspect = {
 };
 
 export async function generateOutreach(prospect: OutreachProspect) {
-  const response = await openai.chat.completions.create({
+  const response = await executeModelRequest({
     model: "gpt-4.1-mini",
     messages: [
       {
@@ -39,7 +35,10 @@ marketing assistance
 `,
       },
     ],
+    telemetry: {
+      module: "lib/agents/outreachAgent.ts",
+    },
   });
 
-  return response.choices[0].message.content;
+  return extractTextFromCompletion(response);
 }

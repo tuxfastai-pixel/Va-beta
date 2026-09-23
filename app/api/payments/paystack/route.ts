@@ -11,6 +11,20 @@ type PaystackBody = {
 };
 
 export async function POST(req: NextRequest) {
+  const expectedSecret = process.env.CRON_SECRET;
+  const authorization = req.headers.get("authorization");
+
+  if (!expectedSecret) {
+    return NextResponse.json(
+      { error: "Paystack authentication is not configured" },
+      { status: 503 }
+    );
+  }
+
+  if (authorization !== `Bearer ${expectedSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = (await req.json().catch(() => null)) as PaystackBody | null;
 
   if (!body || typeof body !== "object") {
@@ -30,7 +44,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "email is required" }, { status: 400 });
   }
 
-  const origin = String(body.origin || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  const origin = String(process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin).replace(/\/$/, "");
 
   try {
     const response = await axios.post(

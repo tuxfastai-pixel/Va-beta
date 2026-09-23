@@ -2,6 +2,8 @@ import { addPremiumPositioning, calculatePremiumPrice } from "@/lib/pricing/prof
 import { detectUserNiche } from "@/lib/profile/nicheDetector";
 import { optimizeJobSelection } from "@/lib/revenue/revenueOptimizer";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { generatePlatformResponse } from "@/lib/ai/platformResponder";
+import { detectFinanceJob } from "@/lib/finance/financeEngine";
 
 type JobMatch = {
   id: string;
@@ -13,6 +15,7 @@ type JobMatch = {
   pay_amount?: number | null;
   scam_risk?: string | null;
   profit_score?: number | null;
+  platform?: string | null;
 };
 
 function expandNicheKeywords(niche: string): string[] {
@@ -128,12 +131,18 @@ export function detectNiche(job: JobMatch) {
 
 export function generateSmartProposal(job: JobMatch) {
   const niche = detectNiche(job);
+  const platformPrimer = generatePlatformResponse(String(job.platform || ""), job);
+  const closePrompt = "Would you like me to begin with a specific first step?";
 
-  if (niche === "legal") return addPremiumPositioning(legalProposal(job));
-  if (niche === "crm") return addPremiumPositioning(crmProposal(job));
-  if (niche === "finance") return addPremiumPositioning(financeProposal(job));
+  const financeBoosted = detectFinanceJob({ description: job.description || "" });
 
-  return addPremiumPositioning(generateEliteProposal(job));
+  if (niche === "legal") return `${platformPrimer}\n\n${addPremiumPositioning(legalProposal(job))}\n\n${closePrompt}`;
+  if (niche === "crm") return `${platformPrimer}\n\n${addPremiumPositioning(crmProposal(job))}\n\n${closePrompt}`;
+  if (niche === "finance" || financeBoosted) {
+    return `${platformPrimer}\n\n${addPremiumPositioning(financeProposal(job))}\n\n${closePrompt}`;
+  }
+
+  return `${platformPrimer}\n\n${addPremiumPositioning(generateEliteProposal(job))}\n\n${closePrompt}`;
 }
 
 export function generateProposal(job: JobMatch) {

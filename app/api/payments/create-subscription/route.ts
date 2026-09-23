@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/payments/stripe";
+import { getSessionUser } from "@/lib/auth/sessionUser";
 import { trackFunnelEvent } from "@/lib/analytics/funnelTracking";
 
 export async function POST(req: Request) {
+  const authenticatedUser = await getSessionUser();
+
+  if (!authenticatedUser) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_PRICE_ID) {
       return NextResponse.json(
@@ -13,7 +19,14 @@ export async function POST(req: Request) {
 
     // Try to get email from request body if provided
     const body = await req.json().catch(() => ({}));
-    const email = body?.email ? String(body.email).trim().toLowerCase() : undefined;
+    const requestedEmail = body?.email ? String(body.email).trim().toLowerCase() : undefined;
+    const sessionEmail = String(authenticatedUser.email || "").trim().toLowerCase();
+
+    if (requestedEmail && sessionEmail && requestedEmail !== sessionEmail) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const email = sessionEmail || undefined;
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const stripe = getStripe();

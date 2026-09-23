@@ -4,11 +4,15 @@ type UserProfileInput = {
   name?: string;
   email?: string;
   skill: SkillTrack;
+  primary_career?: string;
+  secondary_careers?: string[];
 };
 
 type ProfileDescriptionInput = {
   skills: string[];
   ai_capabilities?: string[];
+  primary_career?: string;
+  secondary_careers?: string[];
 };
 
 const skillNames: Record<SkillTrack, string> = {
@@ -52,12 +56,30 @@ export function generateSafeProfile<T extends {
 }
 
 export function generateProfileDescription(user: ProfileDescriptionInput) {
+  const primaryCareer = String(user.primary_career || "").trim();
+  const secondaryCareers = Array.isArray(user.secondary_careers)
+    ? user.secondary_careers.filter(Boolean)
+    : [];
   const listedSkills = user.skills.length > 0 ? user.skills.join(", ") : "remote support and digital execution";
   const aiCapabilities = (user.ai_capabilities || defaultAICapabilities).join(", ");
 
+  if (primaryCareer) {
+    return `I specialize in ${primaryCareer}, delivering reliable and high-quality results.
+
+Additionally, I support work in:
+${secondaryCareers.join(", ") || "related tasks"}.
+
+I use efficient workflows to:
+✔ Deliver fast turnaround
+✔ Handle multiple tasks efficiently
+✔ Maintain consistent quality
+
+Available to start immediately.`;
+  }
+
   return `I am a results-driven professional skilled in ${listedSkills}.
 
-I use advanced tools and AI-assisted workflows to deliver work faster, more accurately, and efficiently.
+I use efficient workflows and modern tools to deliver work faster, more accurately, and consistently.
 
 I can assist with:
 ✔ Task execution
@@ -93,6 +115,8 @@ export function generateProfile(user: UserProfileInput) {
     profileDescription: generateProfileDescription({
       skills: enhancedProfile.skills,
       ai_capabilities: enhancedProfile.ai_capabilities,
+      primary_career: user.primary_career,
+      secondary_careers: user.secondary_careers,
     }),
   });
 }

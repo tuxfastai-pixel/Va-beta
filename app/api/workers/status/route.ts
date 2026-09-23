@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getSessionUser } from "@/lib/auth/sessionUser";
 import { createClient } from "@supabase/supabase-js";
 import { calculateWorkerScore } from "@/lib/ai/workerScore";
 
@@ -41,8 +42,16 @@ function calculateProjectedMonthlyEarnings(activeJobs: ActiveJobRow[]) {
 }
 
 export async function GET(req: Request) {
+  const session = await getSessionUser();
+
+  if (!session?.userId) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const { searchParams } = new URL(req.url);
   const userId = searchParams.get("userId");
+  if (userId && userId !== session.userId) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   if (!userId) {
     return NextResponse.json({ error: "userId is required" }, { status: 400 });

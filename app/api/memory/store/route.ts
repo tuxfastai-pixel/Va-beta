@@ -1,15 +1,22 @@
 import { NextResponse } from "next/server"
-import OpenAI from "openai"
+import { getSessionUser } from "@/lib/auth/sessionUser"
 import { supabaseServer } from "@/lib/supabaseServer"
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-})
+import { executeModelRequest, extractTextFromCompletion } from "@/lib/ai/executeModelRequest"
 
 export async function POST(req: Request) {
+  const session = await getSessionUser()
+
+  if (!session?.userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
   const { userId, message } = await req.json()
 
-  const completion = await openai.chat.completions.create({
+  if (userId !== session.userId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
+  const completion = await executeModelRequest({
     model: "gpt-4o-mini",
     messages: [
       {
@@ -17,10 +24,14 @@ export async function POST(req: Request) {
         content: "Extract important long-term facts about the user in one sentence."
       },
       { role: "user", content: message }
-    ]
+    ],
+    telemetry: {
+      route: "app/api/memory/store/route.ts",
+      userId: userId || null,
+    },
   })
 
-  const memory = completion.choices[0].message.content
+  const memory = extractTextFromCompletion(completion)
 
   await supabaseServer.from("ai_memory").insert({
     user_id: userId,

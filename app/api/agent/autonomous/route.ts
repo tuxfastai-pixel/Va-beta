@@ -1,7 +1,24 @@
 import { NextResponse } from "next/server"
 import { supabaseServer } from "@/lib/supabaseServer"
 
-export async function GET() {
+export async function GET(request: Request) {
+  const expectedSecret = process.env.CRON_SECRET
+
+  if (!expectedSecret) {
+    return NextResponse.json(
+      { success: false, error: "Automation authentication is not configured" },
+      { status: 503 }
+    )
+  }
+
+  const authorization = request.headers.get("authorization")
+
+  if (authorization !== `Bearer ${expectedSecret}`) {
+    return NextResponse.json(
+      { success: false, error: "Unauthorized" },
+      { status: 401 }
+    )
+  }
   const { data: users } = await supabaseServer
     .from("users")
     .select("*")

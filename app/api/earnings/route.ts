@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSessionUser } from "@/lib/auth/sessionUser";
 import { supabase } from "@/lib/supabase";
 
 type EarningsRow = {
@@ -11,12 +12,24 @@ type EarningsRow = {
 };
 
 export async function GET(req: NextRequest) {
+  const session = await getSessionUser();
+
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(req.url);
 
   const from = searchParams.get("from");
   const to = searchParams.get("to");
   const clientId = searchParams.get("client_id");
-  const userId = searchParams.get("user_id");
+  const requestedUserId = searchParams.get("user_id");
+
+  if (requestedUserId && requestedUserId !== session.userId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const userId = session.userId;
 
   let query = supabase
     .from("earnings")
@@ -25,7 +38,7 @@ export async function GET(req: NextRequest) {
   if (from) query = query.gte("created_at", from);
   if (to) query = query.lte("created_at", to);
   if (clientId) query = query.eq("client_id", clientId);
-  if (userId) query = query.eq("user_id", userId);
+  query = query.eq("user_id", userId);
 
   const { data, error } = await query;
 

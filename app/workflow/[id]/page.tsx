@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useParams } from "next/navigation"
 import { useEffect, useState } from "react"
@@ -81,7 +81,26 @@ export default function WorkflowPage() {
   useEffect(() => {
     if (!userId) return
 
-    void fetchUsage(userId)
+    let cancelled = false
+
+    void fetch("/api/usage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId })
+    })
+      .then((res) => res.json())
+      .then((data: { tokensUsed?: number }) => {
+        if (!cancelled) {
+          setUsage(Number(data.tokensUsed || 0))
+        }
+      })
+      .catch((error) => {
+        console.error("Usage fetch error:", error)
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [userId])
 
   const sendMessage = async () => {
@@ -133,7 +152,7 @@ export default function WorkflowPage() {
 
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "⚠️ Something went wrong." }
+        { role: "assistant", content: "âš ï¸ Something went wrong." }
       ])
     }
 

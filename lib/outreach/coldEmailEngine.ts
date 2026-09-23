@@ -76,7 +76,13 @@ export async function sendColdEmail(
         lead_email: options.to,
         subject: options.subject,
         message: options.text,
-        template_id: options.templateId || "unknown",
+        template_id:
+          options.templateId &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+            options.templateId
+          )
+            ? options.templateId
+            : null,
         status: "sent",
         sent_at: new Date().toISOString(),
       });

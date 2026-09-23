@@ -1,12 +1,8 @@
-import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 import { config as loadEnv } from "dotenv";
+import { executeModelRequest, extractTextFromCompletion } from "@/lib/ai/executeModelRequest";
 
 loadEnv({ path: ".env.local" });
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 const supabase = createClient(
   process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -83,7 +79,7 @@ function parseQualityResponse(content: string): QualityResult {
 
 export async function filterJob(job: JobCandidate): Promise<QualityResult> {
   try {
-    const response = await openai.chat.completions.create({
+    const response = await executeModelRequest({
       model: "gpt-4.1-mini",
       messages: [
         {
@@ -95,9 +91,13 @@ export async function filterJob(job: JobCandidate): Promise<QualityResult> {
           content: `Evaluate this job listing.\n\nTitle: ${job.title || ""}\nCompany: ${job.company || job.company_name || ""}\nDescription: ${job.description || ""}\nPay: ${job.salary || job.pay_amount || ""}\nLocation: ${job.location || job.country || ""}\n\nReturn JSON only with:\n{\n salary_score: number (0-20),\n company_score: number (0-20),\n location_score: number (0-20),\n scam_risk: number (0-1),\n scam_risk_score: number (0-20),\n relevance_score: number (0-20),\n reason: string\n}`,
         },
       ],
+      telemetry: {
+        module: "lib/agents/jobQualityFilter.ts",
+        jobId: job.id || null,
+      },
     });
 
-    const content = response.choices[0].message.content || "{}";
+    const content = extractTextFromCompletion(response) || "{}";
     return parseQualityResponse(content);
   } catch (error) {
     console.warn("Quality filter fallback:", error);

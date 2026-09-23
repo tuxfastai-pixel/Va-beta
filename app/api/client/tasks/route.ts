@@ -1,7 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
-import { notifyAiWorkerWake } from "@/lib/queues/aiWorkerWakeQueue";
 import { isClientApiKeyValid, isUuid } from "@/lib/clients/clientApiAuth";
 
 type TaskType =
@@ -151,10 +150,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    await notifyAiWorkerWake({
-      taskId,
-      taskType,
-    });
+    if (process.env.ENABLE_QUEUES === "true") {
+      const { notifyAiWorkerWake } = await import("@/lib/queues/aiWorkerWakeQueue");
+      await notifyAiWorkerWake({
+        taskId,
+        taskType,
+      });
+    }
 
     return NextResponse.json({
       status: "accepted",

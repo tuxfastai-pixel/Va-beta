@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { requireAdminRole } from "@/lib/auth/serverAuth";
 
 interface EmailAccountRequest {
   email: string;
@@ -15,6 +16,12 @@ interface EmailAccountRequest {
  * POST: Add new email account
  */
 export async function POST(req: Request) {
+  const auth = await requireAdminRole();
+
+  if ("response" in auth) {
+    return auth.response;
+  }
+
   try {
     const SAFE_MODE = process.env.SAFE_MODE === "true";
 
@@ -92,6 +99,12 @@ export async function POST(req: Request) {
  * GET: List all email accounts
  */
 export async function GET(req: Request) {
+  const auth = await requireAdminRole();
+
+  if ("response" in auth) {
+    return auth.response;
+  }
+
   try {
     const url = new URL(req.url);
     const status = url.searchParams.get("status");
@@ -130,6 +143,12 @@ export async function GET(req: Request) {
  * PUT: Update email account
  */
 export async function PUT(req: Request) {
+  const auth = await requireAdminRole();
+
+  if ("response" in auth) {
+    return auth.response;
+  }
+
   try {
     const url = new URL(req.url);
     const accountId = url.searchParams.get("id");
@@ -191,6 +210,12 @@ export async function PUT(req: Request) {
  * DELETE: Remove email account
  */
 export async function DELETE(req: Request) {
+  const auth = await requireAdminRole();
+
+  if ("response" in auth) {
+    return auth.response;
+  }
+
   try {
     const url = new URL(req.url);
     const accountId = url.searchParams.get("id");

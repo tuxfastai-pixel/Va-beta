@@ -1,15 +1,10 @@
-import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 import { config as loadEnv } from "dotenv";
 import { sendNotification } from "../notifications/email.ts";
-import { enqueueApplicationJob } from "../queues/applicationQueue.ts";
 import { enqueueEngineeringTask } from "@/lib/engineering/enqueueEngineeringTask";
+import { executeModelRequest, extractTextFromCompletion } from "@/lib/ai/executeModelRequest";
 
 loadEnv({ path: ".env.local" });
-
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -52,7 +47,7 @@ function normalizeScamRisk(value: unknown): "low" | "medium" | "high" {
 }
 
 export async function jobMatcherAgent(userId: string, resume: string, job: JobInput, profile: string) {
-  const completion = await client.chat.completions.create({
+  const completion = await executeModelRequest({
     model: "gpt-4.1-mini",
     messages: [
       {
@@ -78,9 +73,14 @@ Recommendation:
 `,
       },
     ],
+    telemetry: {
+      module: "lib/agents/jobMatcherAgent.ts",
+      userId,
+      jobId: job.id || null,
+    },
   });
 
-  const result = completion.choices[0].message.content || "";
+  const result = extractTextFromCompletion(completion);
 
   const matchScore =
     parseInt(result.match(/MatchScore:\s*(\d+)/)?.[1] || "0", 10);
@@ -106,7 +106,8 @@ Recommendation:
     .eq("id", userId)
     .single();
 
-  if (capabilityScore > 80 && user) {
+  if (capabilityScore > 80 && user && process.env.ENABLE_QUEUES === "true") {
+    const { enqueueApplicationJob } = await import("../queues/applicationQueue.ts");
     await enqueueApplicationJob({
       userId: user.id,
       job,

@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { requireAdminRole } from "@/lib/auth/serverAuth";
 
 export async function GET() {
+  const auth = await requireAdminRole();
+
+  if ("response" in auth) {
+    return auth.response;
+  }
   const { data, error } = await supabaseServer
     .from("companies")
     .select("id, name, plan, created_at, license_per_user_usd")
@@ -16,6 +22,11 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAdminRole();
+
+  if ("response" in auth) {
+    return auth.response;
+  }
   try {
     const body = await req.json();
     const name = String(body?.name || "").trim();

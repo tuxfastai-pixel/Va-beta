@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { getMonthRevenue, getRevenueByStream, getTodayRevenue } from "@/lib/revenue/tracker";
 
 type FunnelEventRow = {
   step: string | null;
@@ -22,6 +23,10 @@ type EmailAccountRow = {
 };
 
 type ComputedMetrics = {
+  visits: number;
+  leads: number;
+  bookedCalls: number;
+  conversions: number;
   adClicks: number;
   leadsCreated: number;
   subscriptions: number;
@@ -92,6 +97,12 @@ export async function GET(req: Request) {
       .from("email_accounts")
       .select("sent_total");
 
+    const [revenueToday, revenueMonth, revenueByStream] = await Promise.all([
+      getTodayRevenue(),
+      getMonthRevenue(),
+      getRevenueByStream(),
+    ]);
+
     const metrics = calculateMetrics(
       (funnelEvents as FunnelEventRow[] | null) || [],
       (emailStats as EmailStatRow[] | null) || [],
@@ -103,6 +114,15 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       period: `Last ${days} days`,
+      visits: metrics.visits,
+      leads: metrics.leads,
+      bookedCalls: metrics.bookedCalls,
+      conversions: metrics.conversions,
+      conversionRate: metrics.leads > 0 ? Number(((metrics.conversions / metrics.leads) * 100).toFixed(2)) : 0,
+      revenue: revenueMonth,
+      revenueToday,
+      revenueMonth,
+      revenueByStream,
       metrics,
       targets: KPI_TARGETS,
       assessment,
@@ -126,6 +146,11 @@ function calculateMetrics(
   deals: DealRow[],
   accounts: EmailAccountRow[]
 ): ComputedMetrics {
+  const visits = funnelEvents.filter((event) => event.step === "landing_view").length;
+  const leads = funnelEvents.filter((event) => event.step === "lead_created").length;
+  const bookedCalls = funnelEvents.filter((event) => event.step === "booked_call").length;
+  const conversionsFromEvents = funnelEvents.filter((event) => event.step === "conversion").length;
+
   const adClicks = funnelEvents.filter((event) => event.step === "ad_click").length;
   const leadsCreated = funnelEvents.filter((event) => event.step === "lead_created").length;
   const subscriptions = funnelEvents.filter((event) => event.step === "subscription_created").length;
@@ -136,6 +161,7 @@ function calculateMetrics(
   const emailsBounced = emailStats.filter((event) => event.status === "bounced").length;
 
   const closedDeals = deals.filter((deal) => deal.status === "closed").length;
+  const conversions = conversionsFromEvents > 0 ? conversionsFromEvents : closedDeals;
   const accountCount = accounts.length;
   const monthlyEmailCost = accountCount * 10;
 
@@ -143,11 +169,15 @@ function calculateMetrics(
   const openRate = emailsSent > 0 ? (emailsOpened / emailsSent) * 100 : 0;
   const replyRate = emailsSent > 0 ? (emailsReplied / emailsSent) * 100 : 0;
   const bounceRate = emailsSent > 0 ? (emailsBounced / emailsSent) * 100 : 0;
-  const closeRate = leadsCreated > 0 ? (closedDeals / leadsCreated) * 100 : 0;
+  const closeRate = leadsCreated > 0 ? (conversions / leadsCreated) * 100 : 0;
   const costPerLead = leadsCreated > 0 ? monthlyEmailCost / leadsCreated : 0;
   const dealToSubscriptionRate = closedDeals > 0 ? (subscriptions / closedDeals) * 100 : 0;
 
   return {
+    visits,
+    leads,
+    bookedCalls,
+    conversions,
     adClicks,
     leadsCreated,
     subscriptions,

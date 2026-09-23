@@ -211,6 +211,97 @@
   gap: 8px;
 }
 
+.paymentSection {
+  margin-top: 14px;
+  border: 1px solid #4a5c77;
+  border-radius: 16px;
+  padding: 16px;
+  background: linear-gradient(180deg, rgb(255 255 255 / 5%), rgb(255 255 255 / 2%));
+  display: grid;
+  gap: 14px;
+}
+
+.paymentHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.paymentHeader h3 {
+  margin: 4px 0 0;
+  font-size: 18px;
+}
+
+.paymentBadge {
+  border: 1px solid #60748f;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #eff6ff;
+  background-color: rgb(255 255 255 / 6%);
+  white-space: nowrap;
+}
+
+.checkboxGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.checkboxChip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #50617a;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background-color: rgb(255 255 255 / 3%);
+  color: #dce6f5;
+}
+
+.checkboxChip input {
+  accent-color: #ff7b53;
+}
+
+.paymentFields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.paymentFields label {
+  display: grid;
+  gap: 6px;
+  color: #ced5e0;
+}
+
+.paymentFields input,
+.paymentFields select {
+  border: 1px solid #465771;
+  border-radius: 10px;
+  padding: 10px;
+  color: #f4f7fb;
+  background-color: #1a2433;
+}
+
+.paymentSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.paymentSummaryGrid p {
+  margin: 0;
+}
+
+.successBox ul {
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
 @media (max-width: 640px) {
   .page {
     padding: 12px;
@@ -222,6 +313,10 @@
   }
 
   .platformHeader {
+    flex-direction: column;
+  }
+
+  .paymentHeader {
     flex-direction: column;
   }
 }

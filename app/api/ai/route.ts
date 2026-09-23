@@ -1,20 +1,18 @@
-import OpenAI from "openai"
 import { NextResponse } from "next/server"
 import { supabaseServer } from "@/lib/supabaseServer"
 import { selectAgent } from "@/lib/agentRouter"
 import { logAIActivity } from "@/lib/ai/activityLogger"
 import { CLIENT_TRANSPARENCY_NOTE, confidenceScore, selfValidate } from "@/lib/ai/outputQuality"
+import { normalizeMessages } from "@/lib/ai/requestNormalizer"
+import { executeModelRequest, extractTextFromCompletion } from "@/lib/ai/executeModelRequest"
 import { runConversation } from "@/lib/voice/conversationEngine"
 
 type AIRequestBody = {
   message?: string
+  messages?: unknown
   sessionId?: string
   userId?: string
 }
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-})
 
 function buildFallbackPrompt(message: string) {
   const agent = selectAgent(message)
@@ -63,7 +61,13 @@ async function persistMessages(sessionId: string | undefined, message: string, r
 export async function POST(req: Request) {
   try {
     const body = await req.json() as AIRequestBody
-    const message = String(body.message || "").trim()
+    const normalizedMessages = normalizeMessages(body.messages)
+    const latestUserMessage = normalizedMessages
+      .slice()
+      .reverse()
+      .find((entry) => entry.role === "user")
+      ?.content
+    const message = String(body.message || latestUserMessage || "").trim()
     const sessionId = body.sessionId?.trim()
     const userId = body.userId?.trim()
 
@@ -89,15 +93,29 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "OPENAI_API_KEY is not configured" }, { status: 500 })
       }
 
-      const completion = await openai.chat.completions.create({
+      const aiMessages = normalizedMessages.length > 0
+        ? normalizedMessages
+        : [
+            { role: "system" as const, content: buildFallbackPrompt(message) },
+            { role: "user" as const, content: message },
+          ]
+
+      const hasSystemPrompt = aiMessages.some((entry) => entry.role === "system")
+      const requestMessages = hasSystemPrompt
+        ? aiMessages
+        : [{ role: "system" as const, content: buildFallbackPrompt(message) }, ...aiMessages]
+
+      const completion = await executeModelRequest({
         model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: buildFallbackPrompt(message) },
-          { role: "user", content: message }
-        ]
+        messages: requestMessages,
+        telemetry: {
+          route: "app/api/ai/route.ts",
+          sessionId: sessionId || null,
+          userId: userId || null,
+        },
       })
 
-      reply = completion.choices[0].message.content?.trim() || "I am ready to help you start earning."
+      reply = extractTextFromCompletion(completion) || "I am ready to help you start earning."
       action = selectAgent(message)
     }
 

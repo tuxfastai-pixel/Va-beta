@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { requireAdminRole } from "@/lib/auth/serverAuth";
 
 /**
  * GET /api/admin/access-requests
@@ -7,6 +8,9 @@ import { supabaseServer } from "@/lib/supabaseServer";
  */
 export async function GET(req: NextRequest) {
   try {
+    const auth = await requireAdminRole();
+    if ("response" in auth) return auth.response;
+
     const status = req.nextUrl.searchParams.get("status") || "pending";
     const limit = parseInt(req.nextUrl.searchParams.get("limit") || "50");
 
@@ -38,6 +42,9 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
+    const auth = await requireAdminRole();
+    if ("response" in auth) return auth.response;
+
     const body = await req.json();
     const { ids, status, adminNotes } = body;
 

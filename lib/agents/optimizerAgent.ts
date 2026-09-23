@@ -1,4 +1,5 @@
 import { buildRevenueProjection, getDailyTarget, getScalingPhase } from "@/lib/analytics/conversionKpi";
+import { shouldAdaptSystem } from "@/lib/ai/learningLoop";
 import { buildTransparentEarningsSummary } from "@/lib/earnings/tracker";
 import { analyzePerformance, getLearningEvents, updateProfileAIMemory } from "@/lib/learning/learningEngine";
 import { supabaseServer } from "@/lib/supabaseServer";
@@ -59,6 +60,7 @@ export async function optimizerAgent(user: UserLike): Promise<AgentResult<Record
   const rows = (data || []) as Array<{ amount?: number | null; ai_assisted?: boolean | null; platform?: string | null; status?: string | null }>;
   const summary = buildTransparentEarningsSummary(rows);
   const scaling = getScalingPhase({ users: 10, totalConversions: performance.wins });
+  const adapt = shouldAdaptSystem({ conversionRate: performance.winRate, threshold: 0.2 });
 
   return {
     success: true,
@@ -67,6 +69,9 @@ export async function optimizerAgent(user: UserLike): Promise<AgentResult<Record
       suggestion: performance.recommendation,
       learning: performance,
       scaling,
+      dynamic_adjustment: adapt
+        ? ["adjustMessaging", "adjustPricing", "adjustPlatformFocus"]
+        : ["maintainCurrentStrategy"],
       revenue_projection: buildRevenueProjection(10),
       daily_target: getDailyTarget(),
     },
