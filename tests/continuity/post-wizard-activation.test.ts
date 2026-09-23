@@ -345,3 +345,38 @@ test("preferred skills are not penalised as required job gaps", () => {
     "Leadership",
   ])
 })
+
+
+test("Jobs stage uses automatic approved-feed discovery before manual fallback", async () => {
+  const route = await readFile(
+    new URL(
+      "../../app/api/career/recommended-jobs/route.ts",
+      import.meta.url
+    ),
+    "utf8"
+  )
+
+  const hunter = await readFile(
+    new URL(
+      "../../lib/jobs/opportunityHunter.ts",
+      import.meta.url
+    ),
+    "utf8"
+  )
+
+  const stage = await readFile(
+    new URL(
+      "../../components/career-activation/JobDiscoveryStage.tsx",
+      import.meta.url
+    ),
+    "utf8"
+  )
+
+  assert.match(route, /runOpportunityHunter/)
+  assert.match(hunter, /https:\/\/remotive\.com\/api\/remote-jobs/)
+  assert.match(hunter, /https:\/\/remoteok\.com\/api/)
+  assert.doesNotMatch(hunter, /playwright|indeed|upwork/i)
+  assert.match(stage, /await searchForJobs\(true\)/)
+  assert.match(stage, /Manual fallback: paste a job/)
+  assert.match(stage, /never submits an application without your review and approval/i)
+})
