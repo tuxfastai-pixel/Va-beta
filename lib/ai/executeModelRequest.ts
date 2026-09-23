@@ -192,7 +192,14 @@ export function buildModelPayload(input: ExecuteModelRequestInput): Record<strin
     payload.tools = tools;
   }
 
-  if (telemetry) {
+  // OpenAI only accepts metadata when remote response storage is enabled.
+  // Telemetry is an internal concern by default, so never let it make a
+  // store:false request invalid.
+  if (payload.store !== true && "metadata" in payload) {
+    delete payload.metadata;
+  }
+
+  if (telemetry && payload.store === true) {
     payload.metadata = {
       ...(isRecord(payload.metadata) ? payload.metadata : {}),
       ...telemetry,
