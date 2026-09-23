@@ -448,3 +448,119 @@ test("oversized leaked paragraphs cannot become individual skills", () => {
     ["Technical support"]
   )
 })
+
+
+test("successful AI extraction becomes authoritative for confirmed skills", () => {
+  const structured = structureCvInput({
+    mode: "upload",
+    rawText: [
+      "Pilot User",
+      "Skills",
+      "Capability",
+      "Demonstrated knowledge and experience",
+      "Technical Support",
+    ].join("\n"),
+  })
+
+  const merged = mergeSkillExtraction(structured, {
+    confirmedSkills: ["Technical Support"],
+    evidence: [{
+      skill: "Technical Support",
+      evidence: "Technical Support",
+      sourceSection: "Skills",
+      evidenceType: "explicit",
+      confidence: 0.98,
+      requiresConfirmation: false,
+    }],
+    pendingSkills: [],
+    mode: "ai",
+  })
+
+  assert.deepEqual(merged.skills, ["Technical Support"])
+})
+
+test("career profile curation removes headings, groups skills and counts real records", async () => {
+  const {
+    curateSkillGroups,
+    summarizeExperience,
+  } = await import("../../lib/career/profileCuration.ts")
+
+  const profile = {
+    skills: ["Capability", "React", "Technical Support", "Evidence indexing"],
+    skillEvidence: [
+      { skill: "React", confidence: 0.95 },
+      { skill: "Technical Support", confidence: 0.9 },
+    ],
+    workExperience: [
+      "Company: Example\nPosition: Technician\nResponsibilities: Support",
+      "Company: Second\nPosition: Analyst\nResponsibilities: Review",
+    ],
+  }
+
+  assert.deepEqual(
+    curateSkillGroups(profile).flatMap((group) => group.skills),
+    ["React", "Technical Support", "Evidence indexing"]
+  )
+  assert.deepEqual(summarizeExperience(profile), {
+    roleCount: 2,
+    evidenceCount: 2,
+  })
+})
+
+test("skill candidates require an explicit user decision", async () => {
+  const {
+    applySkillCandidateDecision,
+  } = await import("../../lib/career/profileCuration.ts")
+
+  const profile = {
+    skills: ["React"],
+    skillsNeedingConfirmation: [{
+      skill: "AI Product Development",
+      evidence: "AI product and delivery",
+      requiresConfirmation: true,
+    }],
+    skillEvidence: [{
+      skill: "AI Product Development",
+      evidence: "AI product and delivery",
+      requiresConfirmation: true,
+    }],
+  }
+
+  const confirmed = applySkillCandidateDecision(profile, {
+    skill: "AI Product Development",
+    decision: "confirm",
+    editedSkill: "AI Product Delivery",
+  })
+
+  assert.deepEqual(confirmed.skills, ["React", "AI Product Delivery"])
+  assert.deepEqual(confirmed.skillsNeedingConfirmation, [])
+
+  const rejected = applySkillCandidateDecision(profile, {
+    skill: "AI Product Development",
+    decision: "reject",
+  })
+
+  assert.deepEqual(rejected.skills, ["React"])
+  assert.deepEqual(rejected.skillsNeedingConfirmation, [])
+  assert.deepEqual(rejected.rejectedSkillCandidates, ["AI Product Development"])
+})
+
+test("profile details resolve the matching follow-up questions", async () => {
+  const {
+    applyProfileDetails,
+  } = await import("../../lib/career/profileCuration.ts")
+
+  const updated = applyProfileDetails({
+    missingFields: ["professional_summary", "preferred_roles"],
+    followUpQuestions: [
+      "Share a 2-3 sentence professional summary focused on your strongest outcomes.",
+      "Which roles are you targeting first in this activation cycle?",
+    ],
+  }, {
+    professionalSummary: "Evidence-led AI product and technical support professional focused on responsible career systems.",
+    preferredRoles: ["AI Product Manager", "Technical Support Lead"],
+  })
+
+  assert.deepEqual(updated.missingFields, [])
+  assert.deepEqual(updated.followUpQuestions, [])
+})

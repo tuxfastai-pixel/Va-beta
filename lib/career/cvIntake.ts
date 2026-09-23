@@ -517,11 +517,16 @@ export function mergeSkillExtraction(
   structured: StructuredCv,
   extraction: SkillExtractionResult
 ): StructuredCv {
+  // Once the AI evidence review succeeds it becomes the authoritative
+  // source for confirmed skills. The deterministic list remains a
+  // fallback only, preventing table headings and category labels from
+  // being promoted alongside validated evidence.
   const combinedSkills =
-    normalizeSkillEntries([
-      ...structured.skills,
-      ...extraction.confirmedSkills,
-    ])
+    normalizeSkillEntries(
+      extraction.confirmedSkills.length > 0
+        ? extraction.confirmedSkills
+        : structured.skills
+    )
 
   const next: StructuredCv = {
     ...structured,
