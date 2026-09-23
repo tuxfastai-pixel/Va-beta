@@ -5,9 +5,11 @@ import {
 import { getSessionUser } from "@/lib/auth/sessionUser"
 import { supabaseServer } from "@/lib/supabaseServer"
 import {
-  executeModelRequest,
   extractTextFromCompletion,
 } from "@/lib/ai/executeModelRequest"
+import {
+  executeIntelligenceRequest,
+} from "@/lib/intelligence/execute"
 import {
   buildConfirmedEvidence,
   canApproveCvChange,
@@ -180,7 +182,7 @@ async function generateConfirmedRewrite(
   confidence: number
 }> {
   const completion =
-    await executeModelRequest({
+    await executeIntelligenceRequest("cv", {
       model:
         process.env.CV_ENHANCEMENT_MODEL
           ?.trim() || "gpt-4o-mini",
@@ -291,7 +293,7 @@ async function generateAlternativeRewrite(
     evidenceForRejectedAlternative(row)
 
   const completion =
-    await executeModelRequest({
+    await executeIntelligenceRequest("cv", {
       model:
         process.env.CV_ENHANCEMENT_MODEL
           ?.trim() || "gpt-4o-mini",
