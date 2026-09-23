@@ -12,6 +12,12 @@ import {
 import {
   collectPendingSkillReviewCandidates,
 } from "@/lib/career/cvProfilePromotion"
+import {
+  evaluateIntelligenceCandidate,
+  intelligenceSystemContract,
+  INTELLIGENCE_QUALITY_THRESHOLD,
+  INTELLIGENCE_VERSION,
+} from "@/lib/intelligence/core"
 
 export const dynamic = "force-dynamic"
 
@@ -427,19 +433,45 @@ function validateModelChanges(
         )
     }
 
+    const intelligence =
+      evaluateIntelligenceCandidate({
+        domain: "cv",
+        originalText:
+          matchedEvidence.text,
+        proposedText,
+        sourceEvidence:
+          matchedEvidence.sourceEvidence,
+        reason,
+        preferredRoles: [],
+        requiresConfirmation:
+          needsConfirmation,
+      })
+
+    if (
+      intelligence.decision === "reject"
+    ) {
+      continue
+    }
+
     const requestedConfidence =
       Number(item.confidence)
 
-    const confidence =
+    const modelConfidence =
       Number.isFinite(requestedConfidence)
         ? Math.max(
             0.55,
             Math.min(
-              0.9,
+              0.95,
               requestedConfidence
             )
           )
         : 0.7
+
+    const confidence =
+      Math.min(
+        modelConfidence,
+        intelligence.score / 100
+      )
 
     accepted.push({
       section,
@@ -515,6 +547,7 @@ async function generateAiChanges(
         {
           role: "system",
           content: [
+            intelligenceSystemContract("cv"),
             "You are a senior CV editor producing material, employer-focused improvements.",
             "Use only the supplied evidence and preferred-role context.",
             "Rewrite passive, repetitive, outdated or unclear wording into concise professional CV language.",
@@ -727,6 +760,14 @@ export async function POST() {
     profileId: masterProfile.id,
     generationMode: "ai",
     changes: rows,
+    intelligence: {
+      version: INTELLIGENCE_VERSION,
+      qualityThreshold:
+        INTELLIGENCE_QUALITY_THRESHOLD,
+      multiPass:
+        "analyst-generator-critic-verifier",
+      shallowRewritesAllowed: false,
+    },
     constraints: {
       inventEmployment: false,
       inventQualifications: false,
