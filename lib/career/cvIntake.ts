@@ -5,6 +5,9 @@ import type {
 
 export type CvInputMode = "upload" | "paste" | "build_from_onboarding" | "continue_without_cv"
 
+const sectionBoundaryPattern =
+  /^(?:education|educational background|academic background|post matric qualifications?|experience|work experience|employment history|career history|professional experience|selected project experience|project experience|projects?|skills|key skills|core skills|computer literacy|technical skills|professional competencies|core competencies|capabilities|software|tools|tech stack|languages?|language proficiency|certifications?|licenses?|achievements?|accomplishments?|interests?|hobbies|career aspirations|summary|professional summary|profile|preferred roles|target roles|contact(?: details)?|references|corporate governance(?: and evidence support)?|evidence support|additional information)(?:\s*:)?$/i
+
 export type StructuredCv = {
   fullName: string
   contactDetails: string[]
@@ -53,7 +56,7 @@ function extractSection(
 
     if (
       active &&
-      /^(education|educational background|post matric|experience|work experience|employment history|career history|projects|skills|key skills|core skills|computer literacy|languages|certifications|achievements|interests|career aspirations|summary|professional summary|profile|preferred roles|target roles|contact|references)/i.test(lower)
+      sectionBoundaryPattern.test(lower)
     ) {
       active = false
     }
@@ -164,7 +167,9 @@ function normalizeSkillEntries(
 
     if (
       !cleaned ||
+      cleaned.length > 80 ||
       proficiencyOnly.test(cleaned) ||
+      sectionBoundaryPattern.test(cleaned) ||
       seen.has(key)
     ) {
       continue

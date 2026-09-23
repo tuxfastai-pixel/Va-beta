@@ -399,3 +399,52 @@ test("approved professional summary replaces the canonical summary", async () =>
     "Evidence-controlled professional summary"
   )
 })
+
+
+test("section extraction stops before project and governance headings", () => {
+  const structured = structureCvInput({
+    mode: "upload",
+    rawText: [
+      "Kamogelo Omphile Sentle",
+      "Skills",
+      "- Product vision",
+      "- Requirements definition",
+      "Selected Project Experience",
+      "Founder and AI Product Lead, VA-Beta",
+      "- Defined the product roadmap.",
+      "Corporate Governance and Evidence Support",
+      "- Organised company records.",
+    ].join("\n"),
+  })
+
+  assert.deepEqual(
+    structured.skills,
+    [
+      "Product vision",
+      "Requirements definition",
+    ]
+  )
+  assert.equal(
+    structured.skills.some((skill) =>
+      /Founder|Governance|Organised/.test(skill)
+    ),
+    false
+  )
+})
+
+test("oversized leaked paragraphs cannot become individual skills", () => {
+  const structured = structureCvInput({
+    mode: "upload",
+    rawText: [
+      "Kamogelo Omphile Sentle",
+      "Skills",
+      "Technical support",
+      "This is an incorrectly merged paragraph that is intentionally longer than eighty characters and must not be presented as one skill.",
+    ].join("\n"),
+  })
+
+  assert.deepEqual(
+    structured.skills,
+    ["Technical support"]
+  )
+})
