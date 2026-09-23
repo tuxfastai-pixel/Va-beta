@@ -2,9 +2,11 @@ import { NextResponse } from "next/server"
 import { getSessionUser } from "@/lib/auth/sessionUser"
 import { supabaseServer } from "@/lib/supabaseServer"
 import {
-  executeModelRequest,
   extractTextFromCompletion,
 } from "@/lib/ai/executeModelRequest"
+import {
+  executeIntelligenceRequest,
+} from "@/lib/intelligence/execute"
 import {
   validateConfirmationQuestions,
   type ConfirmationQuestion,
@@ -14,7 +16,6 @@ import {
 } from "@/lib/career/cvProfilePromotion"
 import {
   evaluateIntelligenceCandidate,
-  intelligenceSystemContract,
   INTELLIGENCE_QUALITY_THRESHOLD,
   INTELLIGENCE_VERSION,
 } from "@/lib/intelligence/core"
@@ -539,7 +540,7 @@ async function generateAiChanges(
   }
 
   const completion =
-    await executeModelRequest({
+    await executeIntelligenceRequest("cv", {
       model:
         process.env.CV_ENHANCEMENT_MODEL
           ?.trim() || "gpt-4o-mini",
@@ -547,7 +548,6 @@ async function generateAiChanges(
         {
           role: "system",
           content: [
-            intelligenceSystemContract("cv"),
             "You are a senior CV editor producing material, employer-focused improvements.",
             "Use only the supplied evidence and preferred-role context.",
             "Rewrite passive, repetitive, outdated or unclear wording into concise professional CV language.",
