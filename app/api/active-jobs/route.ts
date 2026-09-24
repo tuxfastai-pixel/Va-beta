@@ -1,11 +1,8 @@
-import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/sessionUser";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import {
+  getSupabaseAdminClient,
+  supabaseConfigurationUnavailableResponse,
+} from "@/lib/server/supabaseAdmin";
 
 export async function GET() {
   const session = await getSessionUser();
@@ -13,6 +10,12 @@ export async function GET() {
   if (!session?.userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) {
+    return supabaseConfigurationUnavailableResponse();
+  }
+
   const { data, error } = await supabase
     .from("active_jobs")
     .select("*")
@@ -20,8 +23,8 @@ export async function GET() {
     .order("created_at", { ascending: false });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json(data);
+  return Response.json(data);
 }
