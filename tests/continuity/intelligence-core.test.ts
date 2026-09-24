@@ -55,6 +55,19 @@ test("central intelligence blocks unsupported outcome inflation", () => {
   assert.match(result.reasons.join(" "), /unverified result language/i)
 })
 
+test("central intelligence blocks grammatical variants of unsupported outcomes", () => {
+  const result = evaluateIntelligenceCandidate({
+    domain: "cv",
+    originalText: "Prepared weekly customer reports.",
+    proposedText: "Prepared weekly customer reports, improving service delivery.",
+    sourceEvidence: "Prepared weekly customer reports.",
+    reason: "Made the business outcome more prominent for hiring managers.",
+  })
+
+  assert.equal(result.decision, "reject")
+  assert.match(result.reasons.join(" "), /unverified result language: improved/i)
+})
+
 test("central intelligence blocks rewrites that discard transferable evidence", () => {
   const result = evaluateIntelligenceCandidate({
     domain: "cv",

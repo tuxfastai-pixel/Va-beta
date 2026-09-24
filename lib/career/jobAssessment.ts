@@ -51,8 +51,6 @@ export function parseJobDescription(input: { title?: string; description: string
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-  const normalized = text.toLowerCase()
-
   const keywordCandidates = lines
     .flatMap((line) => line.split(/[^a-zA-Z0-9+#.-]+/))
     .map((token) => token.trim().toLowerCase())
@@ -83,16 +81,45 @@ export function parseJobDescription(input: { title?: string; description: string
     ["Problem Solving", /\bproblem[ -]?solving|resolve issues?|diagnos(?:e|is)\b/i],
   ]
 
-  const preferredLines = lines
-    .filter((line) => /preferred|advantage|nice to have|desirable|bonus/i.test(line))
-    .join("\n")
+  const preferredMarker = /preferred|advantage|nice to have|desirable|bonus/i
+  const requirementMarker = /required|requirements|must|essential|proficien|experience (?:with|in)|skills?|responsibilit|duties|you will|role involves/i
+  const sectionHeading = /^(?:benefits?|what we offer|compensation|salary|about (?:us|the company)|company|location|how to apply|application process)\s*:?$/i
+  const requirementSectionHeading = /^(?:required (?:skills|qualifications)|requirements?|essential (?:skills|qualifications)|what you(?:'|’)ll need)\s*:?$/i
+  const preferredSectionHeading = /^(?:preferred (?:skills|qualifications)|nice to have|desirable|bonus)\s*:?$/i
 
-  const requirementLines = lines
-    .filter((line) =>
-      /required|requirements|must|essential|proficien|experience (?:with|in)|skills?|responsibilit|duties|you will|role involves/i.test(line) &&
-      !/preferred|advantage|nice to have|desirable|bonus/i.test(line)
-    )
-    .join("\n")
+  let section: "required" | "preferred" | null = null
+  const requiredLineValues: string[] = []
+  const preferredLineValues: string[] = []
+
+  for (const line of lines) {
+    if (sectionHeading.test(line)) {
+      section = null
+      continue
+    }
+    if (preferredSectionHeading.test(line)) {
+      section = "preferred"
+      continue
+    }
+    if (requirementSectionHeading.test(line)) {
+      section = "required"
+      continue
+    }
+
+    if (preferredMarker.test(line)) {
+      preferredLineValues.push(line)
+      continue
+    }
+    if (section === "preferred") {
+      preferredLineValues.push(line)
+      continue
+    }
+    if (section === "required" || requirementMarker.test(line)) {
+      requiredLineValues.push(line)
+    }
+  }
+
+  const preferredLines = preferredLineValues.join("\n")
+  const requirementLines = requiredLineValues.join("\n")
 
   const requirementText =
     requirementLines.trim().length > 0

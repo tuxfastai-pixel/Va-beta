@@ -346,6 +346,29 @@ test("preferred skills are not penalised as required job gaps", () => {
   ])
 })
 
+test("job requirement sections include unmarked lines and stop before benefits", () => {
+  const parsedJob = parseJobDescription({
+    title: "Support Analyst",
+    description: [
+      "Requirements:",
+      "Technical support and customer service",
+      "Microsoft Excel",
+      "Preferred skills:",
+      "Leadership",
+      "Benefits:",
+      "Project management training",
+    ].join("\n"),
+  })
+
+  assert.deepEqual(parsedJob.requiredSkills, [
+    "Microsoft Excel",
+    "Customer Service",
+    "Technical Support",
+  ])
+  assert.deepEqual(parsedJob.preferredSkills, ["Leadership"])
+  assert.equal(parsedJob.requiredSkills.includes("Project Management"), false)
+})
+
 
 test("Jobs stage uses automatic approved-feed discovery before manual fallback", async () => {
   const route = await readFile(

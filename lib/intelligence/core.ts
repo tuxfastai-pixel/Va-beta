@@ -66,25 +66,25 @@ const STOP_WORDS = new Set([
   "to", "was", "were", "while", "with",
 ])
 
-const RESULT_CLAIMS = [
-  "accelerated",
-  "achieved",
-  "boosted",
-  "delivered",
-  "drove",
-  "enhanced",
-  "ensured",
-  "exceeded",
-  "generated",
-  "grew",
-  "improved",
-  "increased",
-  "maximized",
-  "optimized",
-  "reduced",
-  "saved",
-  "transformed",
-] as const
+const RESULT_CLAIMS: Array<[string, RegExp]> = [
+  ["accelerated", /\baccelerat(?:e|ed|es|ing|ion)\b/],
+  ["achieved", /\bachiev(?:e|ed|es|ing|ement|ements)\b/],
+  ["boosted", /\bboost(?:ed|s|ing)?\b/],
+  ["delivered", /\bdeliver(?:ed|s|ing)?\b/],
+  ["drove", /\b(?:drive|drives|driving|drove|driven)\b/],
+  ["enhanced", /\benhanc(?:e|ed|es|ing|ement|ements)\b/],
+  ["ensured", /\bensur(?:e|ed|es|ing)\b/],
+  ["exceeded", /\bexceed(?:ed|s|ing)?\b/],
+  ["generated", /\bgenerat(?:e|ed|es|ing|ion)\b/],
+  ["grew", /\b(?:grow|grows|growing|grew|grown|growth)\b/],
+  ["improved", /\bimprov(?:e|ed|es|ing|ement|ements)\b/],
+  ["increased", /\bincreas(?:e|ed|es|ing)\b/],
+  ["maximized", /\bmaximiz(?:e|ed|es|ing|ation)\b/],
+  ["optimized", /\boptimiz(?:e|ed|es|ing|ation)\b/],
+  ["reduced", /\breduc(?:e|ed|es|ing|tion|tions)\b/],
+  ["saved", /\bsav(?:e|ed|es|ing|ings)\b/],
+  ["transformed", /\btransform(?:ed|s|ing|ation)?\b/],
+]
 
 const GENERIC_PHRASES = [
   "responsible for",
@@ -99,9 +99,9 @@ const GENERIC_PHRASES = [
 ] as const
 
 const SYNONYM_GROUPS = [
-  ["maintained", "kept", "sustained"],
-  ["current", "updated", "up to date"],
-  ["supported", "assisted", "helped"],
+  ["maintained", "maintain", "maintaining", "kept", "sustained"],
+  ["current", "updated", "up to date", "up-to-date"],
+  ["supported", "support", "supporting", "assisted", "helped"],
   ["serviced", "maintained"],
   ["customer", "client"],
   ["used", "utilized"],
@@ -127,6 +127,22 @@ function unique(values: string[]): string[] {
 
 function significantTerms(value: string): string[] {
   return unique(tokens(value)).filter((token) => token.length >= 4)
+}
+
+function canonicalSignificantTerms(value: string): string[] {
+  let canonicalValue = normalize(value)
+
+  for (const group of SYNONYM_GROUPS) {
+    for (const phrase of group) {
+      const pattern = new RegExp(
+        `\\b${normalize(phrase).replace(/\s+/g, "\\s+")}\\b`,
+        "g"
+      )
+      canonicalValue = canonicalValue.replace(pattern, group[0])
+    }
+  }
+
+  return significantTerms(canonicalValue)
 }
 
 function ratio(numerator: number, denominator: number): number {
@@ -181,7 +197,21 @@ function synonymOnlyRewrite(original: string, proposed: string): boolean {
     }
   }
 
-  return left === right
+  if (left === right) return true
+
+  // Small connector changes (for example, dropping "knowledge of") must not
+  // let an otherwise synonym-only rewrite masquerade as substantive work.
+  const leftTerms = canonicalSignificantTerms(left)
+  const rightTerms = canonicalSignificantTerms(right)
+  const shared = leftTerms.filter((term) => rightTerms.includes(term)).length
+  const omitted = leftTerms.length - shared
+  const introduced = rightTerms.length - shared
+
+  return (
+    jaccardSimilarity(leftTerms, rightTerms) >= 0.8 &&
+    omitted <= 1 &&
+    introduced <= 1
+  )
 }
 
 function introducedResultClaims(
@@ -190,9 +220,9 @@ function introducedResultClaims(
 ): string[] {
   const source = normalize(evidence)
   const output = normalize(proposed)
-  return RESULT_CLAIMS.filter(
-    (claim) => output.includes(claim) && !source.includes(claim)
-  )
+  return RESULT_CLAIMS
+    .filter(([, pattern]) => pattern.test(output) && !pattern.test(source))
+    .map(([claim]) => claim)
 }
 
 function genericPhraseCount(value: string): number {
@@ -236,8 +266,8 @@ export function evaluateIntelligenceCandidate(input: {
   const evidence = [input.originalText, input.sourceEvidence]
     .filter(Boolean)
     .join("\n")
-  const evidenceTerms = significantTerms(evidence)
-  const proposedTerms = significantTerms(input.proposedText)
+  const evidenceTerms = canonicalSignificantTerms(evidence)
+  const proposedTerms = canonicalSignificantTerms(input.proposedText)
   const retainedEvidenceTerms = evidenceTerms.filter((term) =>
     proposedTerms.includes(term)
   )
@@ -249,7 +279,7 @@ export function evaluateIntelligenceCandidate(input: {
   )
   const resultClaims = introducedResultClaims(input.proposedText, evidence)
   const similarity = jaccardSimilarity(
-    significantTerms(input.originalText),
+    canonicalSignificantTerms(input.originalText),
     proposedTerms
   )
   const synonymOnly = synonymOnlyRewrite(
