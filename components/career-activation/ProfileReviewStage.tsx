@@ -28,6 +28,7 @@ type StructuredProfile = Record<string, unknown> & {
   workExperience?: unknown
   preferredRoles?: unknown
   followUpQuestions?: string[]
+  skillExtractionMode?: "deterministic" | "ai"
 }
 
 type ProfileReview = {
@@ -122,7 +123,7 @@ export default function ProfileReviewStage() {
       seen.add(key)
       return true
     })
-  }, [structured?.skills, structured?.skillsNeedingConfirmation])
+  }, [structured])
 
   const experience = useMemo(
     () => summarizeExperience((structured || {}) as Record<string, unknown>),
@@ -233,6 +234,11 @@ export default function ProfileReviewStage() {
 
             <section style={panelStyle}>
               <h2 style={{ marginTop: 0, fontSize: 20 }}>Prioritised confirmed skills</h2>
+              {structured?.skillExtractionMode === "deterministic" ? (
+                <p style={{ color: "#fbbf24", fontWeight: 700 }}>
+                  Limited parser only — AI evidence review has not been completed.
+                </p>
+              ) : null}
               <p style={{ color: "#94a3b8" }}>
                 Evidence-backed skills are grouped by employer relevance. Headings and generic labels are excluded.
               </p>

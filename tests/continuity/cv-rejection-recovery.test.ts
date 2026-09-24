@@ -1,6 +1,92 @@
 import test from "node:test"
 import assert from "node:assert"
 import { readFile } from "node:fs/promises"
+import {
+  getCvFeedbackValidationError,
+  initialCvFeedbackState,
+  isValidCvRegenerationFeedback,
+  reduceCvFeedbackState,
+  validateAlternativeFeedback,
+} from "../../lib/career/cvFeedbackValidation.ts"
+
+test(
+  "CV regeneration feedback validation trims input and enforces boundaries",
+  () => {
+    assert.equal(isValidCvRegenerationFeedback("1234"), false)
+    assert.equal(isValidCvRegenerationFeedback(" 12345 "), true)
+    assert.equal(isValidCvRegenerationFeedback("x".repeat(500)), true)
+    assert.equal(isValidCvRegenerationFeedback(` ${"x".repeat(500)} `), true)
+    assert.equal(isValidCvRegenerationFeedback("x".repeat(501)), false)
+    assert.equal(
+      getCvFeedbackValidationError("   "),
+      "Feedback must be between 5 and 500 characters."
+    )
+    assert.equal(getCvFeedbackValidationError("valid"), null)
+  }
+)
+
+test("API feedback validation rejects non-string values", () => {
+  assert.ok(validateAlternativeFeedback(123).error)
+  assert.ok(validateAlternativeFeedback({ feedback: "valid" }).error)
+  assert.equal(validateAlternativeFeedback(" valid ").feedback, "valid")
+})
+
+test("CV feedback transitions isolate cards and preserve failed or rejected state", () => {
+  let state = reduceCvFeedbackState(initialCvFeedbackState, {
+    type: "feedback_changed",
+    changeId: "one",
+    value: "bad",
+  })
+  state = reduceCvFeedbackState(state, {
+    type: "feedback_changed",
+    changeId: "two",
+    value: "use a shorter version",
+  })
+  state = reduceCvFeedbackState(state, {
+    type: "validation_requested",
+    changeId: "one",
+  })
+  assert.ok(state.errorsByChange.one)
+  assert.equal(state.errorsByChange.two, undefined)
+
+  const rejected = reduceCvFeedbackState(state, {
+    type: "rejected",
+    changeId: "one",
+  })
+  assert.strictEqual(rejected, state)
+  const failed = reduceCvFeedbackState(state, {
+    type: "regeneration_failed",
+    changeId: "one",
+  })
+  assert.strictEqual(failed, state)
+
+  state = reduceCvFeedbackState(state, {
+    type: "feedback_changed",
+    changeId: "one",
+    value: "valid feedback",
+  })
+  assert.equal(state.errorsByChange.one, undefined)
+  assert.equal(state.feedbackByChange.two, "use a shorter version")
+
+  state = reduceCvFeedbackState(state, {
+    type: "validation_requested",
+    changeId: "one",
+  })
+  state = reduceCvFeedbackState(state, {
+    type: "reconsidered",
+    changeId: "one",
+  })
+  assert.equal(state.feedbackByChange.one, undefined)
+  assert.equal(state.feedbackByChange.two, "use a shorter version")
+
+  state = reduceCvFeedbackState(state, {
+    type: "validation_requested",
+    changeId: "missing",
+  })
+  state = reduceCvFeedbackState(state, { type: "continued" })
+  assert.deepEqual(state.errorsByChange, {})
+  assert.equal(state.feedbackByChange.two, "use a shorter version")
+})
 
 test(
   "CV rejection recovery is rejected-only and evidence-controlled",
@@ -8,6 +94,20 @@ test(
     const route = await readFile(
       new URL(
         "../../app/api/career/cv-changes/route.ts",
+        import.meta.url
+      ),
+      "utf8"
+    )
+    const evidenceValidation = await readFile(
+      new URL(
+        "../../lib/career/cvEvidenceValidation.ts",
+        import.meta.url
+      ),
+      "utf8"
+    )
+    const feedbackValidation = await readFile(
+      new URL(
+        "../../lib/career/cvFeedbackValidation.ts",
         import.meta.url
       ),
       "utf8"
@@ -24,7 +124,7 @@ test(
       /user_approval_status:\s*"pending"/
     )
     assert.match(
-      route,
+      feedbackValidation,
       /Feedback must be between 5 and 500 characters/
     )
     assert.match(
@@ -48,15 +148,15 @@ test(
       /evidenceForRejectedAlternative/
     )
     assert.match(
-      route,
+      evidenceValidation,
       /confirmationStatus === "confirmed"/
     )
     assert.match(
-      route,
+      evidenceValidation,
       /String\(row\.source_evidence \|\| ""\)\.trim\(\) \|\|/
     )
     assert.match(
-      route,
+      evidenceValidation,
       /String\(row\.original_text \|\| ""\)\.trim\(\)/
     )
     assert.match(
@@ -105,6 +205,22 @@ test(
     assert.match(
       component,
       /action,\s*\.\.\.\(action === "alternative"/
+    )
+    assert.match(
+      component,
+      /\{feedbackErrors\[change\.id\]\}/
+    )
+    assert.match(
+      component,
+      /\{feedback\.length\}\/500 characters/
+    )
+    assert.match(
+      component,
+      /activeRequest !== null \|\|\s*!feedbackIsValid/
+    )
+    assert.match(
+      component,
+      /rejected original wording was retained/
     )
   }
 )

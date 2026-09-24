@@ -38,6 +38,7 @@ test("AI request gateway normalizes composite reconstructed payloads", () => {
       droppedComplexField: { nested: true },
     },
     request: {
+      store: true,
       metadata: { existing: "kept" },
       tools: [
         { type: "function", function: { name: "safe_tool", description: "safe", parameters: { type: "object" } } },

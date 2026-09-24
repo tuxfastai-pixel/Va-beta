@@ -20,6 +20,13 @@ import {
 import {
   applyApprovedCvChange,
 } from "@/lib/career/cvProfilePromotion"
+import {
+  validateAlternativeFeedback,
+} from "@/lib/career/cvFeedbackValidation"
+import {
+  containsUnsupportedNumbers,
+  evidenceForRejectedAlternative,
+} from "@/lib/career/cvEvidenceValidation"
 
 type ChangeStatus =
   | "pending"
@@ -27,7 +34,7 @@ type ChangeStatus =
   | "rejected"
   | "edited"
 
-export type ChangeRow =
+type ChangeRow =
   Record<string, unknown>
 
 function isRecord(
@@ -42,73 +49,6 @@ function extractJson(text: string): unknown {
       .replace(/^```(?:json)?\s*/i, "")
       .replace(/\s*```$/i, "")
       .trim()
-  )
-}
-
-function numericClaims(text: string): string[] {
-  return (
-    text.match(/\b\d+(?:[.,]\d+)?%?\b/g) ||
-    []
-  )
-}
-
-export function containsUnsupportedNumbers(
-  proposedText: string,
-  evidence: string
-): boolean {
-  const allowed =
-    new Set(numericClaims(evidence))
-
-  return numericClaims(proposedText).some(
-    (value) => !allowed.has(value)
-  )
-}
-
-export function validateAlternativeFeedback(
-  value: unknown
-): {
-  feedback: string
-  error: string | null
-} {
-  const feedback =
-    String(value || "").trim()
-
-  if (
-    feedback.length < 5 ||
-    feedback.length > 500
-  ) {
-    return {
-      feedback,
-      error:
-        "Feedback must be between 5 and 500 characters.",
-    }
-  }
-
-  return {
-    feedback,
-    error: null,
-  }
-}
-
-export function evidenceForRejectedAlternative(
-  row: ChangeRow
-): string {
-  const confirmationStatus =
-    String(row.confirmation_status || "")
-
-  const confirmedEvidence =
-    String(row.confirmed_evidence || "").trim()
-
-  if (
-    confirmationStatus === "confirmed" &&
-    confirmedEvidence
-  ) {
-    return confirmedEvidence
-  }
-
-  return (
-    String(row.source_evidence || "").trim() ||
-    String(row.original_text || "").trim()
   )
 }
 

@@ -2,9 +2,16 @@
 
 import {
   useEffect,
+  useReducer,
   useState,
 } from "react"
 import { useRouter } from "next/navigation"
+import {
+  getCvFeedbackValidationError,
+  initialCvFeedbackState,
+  isValidCvRegenerationFeedback,
+  reduceCvFeedbackState,
+} from "@/lib/career/cvFeedbackValidation"
 
 type ChangeStatus =
   | "pending"
@@ -52,9 +59,6 @@ type ChangesPayload = {
 type AnswersByChange =
   Record<string, ConfirmationAnswers>
 
-type FeedbackByChange =
-  Record<string, string>
-
 export default function CvImprovementsStage() {
   const router = useRouter()
 
@@ -64,10 +68,12 @@ export default function CvImprovementsStage() {
   const [answers, setAnswers] =
     useState<AnswersByChange>({})
 
-  const [
-    alternativeFeedback,
-    setAlternativeFeedback,
-  ] = useState<FeedbackByChange>({})
+  const [feedbackState, dispatchFeedback] = useReducer(
+    reduceCvFeedbackState,
+    initialCvFeedbackState
+  )
+  const alternativeFeedback = feedbackState.feedbackByChange
+  const feedbackErrors = feedbackState.errorsByChange
 
   const [loading, setLoading] =
     useState(true)
@@ -162,10 +168,11 @@ export default function CvImprovementsStage() {
     changeId: string,
     value: string
   ) => {
-    setAlternativeFeedback((current) => ({
-      ...current,
-      [changeId]: value,
-    }))
+    dispatchFeedback({ type: "feedback_changed", changeId, value })
+  }
+
+  const clearRejectedFeedback = (changeId: string) => {
+    dispatchFeedback({ type: "reconsidered", changeId })
   }
 
   const handleConfirmation = async (
@@ -283,6 +290,10 @@ export default function CvImprovementsStage() {
         payload.change
       )
 
+      if (action === "rejected") {
+        dispatchFeedback({ type: "rejected", changeId })
+      }
+
       setStatus(
         action === "approved"
           ? "Improvement approved."
@@ -304,15 +315,14 @@ export default function CvImprovementsStage() {
     const feedback =
       alternativeFeedback[change.id] || ""
 
-    if (
-      action === "alternative" &&
-      (feedback.trim().length < 5 ||
-        feedback.trim().length > 500)
-    ) {
-      setStatus(
-        "Feedback must be between 5 and 500 characters."
-      )
-      return
+    if (action === "alternative") {
+      const validationError =
+        getCvFeedbackValidationError(feedback)
+
+      if (validationError) {
+        dispatchFeedback({ type: "validation_requested", changeId: change.id })
+        return
+      }
     }
 
     setActiveRequest(change.id)
@@ -346,7 +356,9 @@ export default function CvImprovementsStage() {
       if (!response.ok) {
         setStatus(
           payload.error ||
-            "The rejected CV improvement could not be updated."
+            (action === "alternative"
+              ? "A different version could not be generated. The rejected original wording was retained."
+              : "The rejected CV improvement could not be updated.")
         )
         return
       }
@@ -356,9 +368,7 @@ export default function CvImprovementsStage() {
         payload.change
       )
 
-      if (action === "alternative") {
-        setRejectedFeedback(change.id, "")
-      }
+      clearRejectedFeedback(change.id)
 
       setStatus(
         action === "reconsider"
@@ -366,8 +376,16 @@ export default function CvImprovementsStage() {
           : "A different evidence-based version is ready for review."
       )
     } catch {
+      if (action === "alternative") {
+        dispatchFeedback({
+          type: "regeneration_failed",
+          changeId: change.id,
+        })
+      }
       setStatus(
-        "The rejected CV improvement could not be updated."
+        action === "alternative"
+          ? "A different version could not be generated. The rejected original wording was retained."
+          : "The rejected CV improvement could not be updated."
       )
     } finally {
       setActiveRequest(null)
@@ -375,6 +393,8 @@ export default function CvImprovementsStage() {
   }
 
   const handleContinue = async () => {
+    dispatchFeedback({ type: "continued" })
+
     const unresolved =
       changes.filter(
         (change) =>
@@ -493,6 +513,12 @@ export default function CvImprovementsStage() {
             {changes.map((change) => {
               const busy =
                 activeRequest === change.id
+
+              const feedback =
+                alternativeFeedback[change.id] || ""
+
+              const feedbackIsValid =
+                isValidCvRegenerationFeedback(feedback)
 
               const needsConfirmation =
                 change.confirmationStatus ===
@@ -908,9 +934,7 @@ export default function CvImprovementsStage() {
 
                           <textarea
                             value={
-                              alternativeFeedback[
-                                change.id
-                              ] || ""
+                              feedback
                             }
                             disabled={busy}
                             minLength={5}
@@ -922,6 +946,19 @@ export default function CvImprovementsStage() {
                                 event.target.value
                               )
                             }
+                            onBlur={() => {
+                              const validationError =
+                                getCvFeedbackValidationError(
+                                  feedback
+                                )
+
+                              if (validationError) {
+                                dispatchFeedback({
+                                  type: "validation_requested",
+                                  changeId: change.id,
+                                })
+                              }
+                            }}
                             placeholder="Example: Make this shorter and less formal. Do not add duties you did not perform."
                             style={{
                               display: "block",
@@ -939,6 +976,30 @@ export default function CvImprovementsStage() {
                             }}
                           />
                         </label>
+
+                        {feedbackErrors[change.id] && (
+                          <p
+                            role="alert"
+                            style={{
+                              margin: "6px 0 0",
+                              color: "#fca5a5",
+                              fontSize: 12,
+                            }}
+                          >
+                            {feedbackErrors[change.id]}
+                          </p>
+                        )}
+
+                        <div
+                          style={{
+                            marginTop: 6,
+                            color: "#94a3b8",
+                            fontSize: 12,
+                            textAlign: "right",
+                          }}
+                        >
+                          {feedback.length}/500 characters
+                        </div>
 
                         <p
                           style={{
@@ -963,7 +1024,8 @@ export default function CvImprovementsStage() {
                           <button
                             type="button"
                             disabled={
-                              activeRequest !== null
+                              activeRequest !== null ||
+                              !feedbackIsValid
                             }
                             onClick={() =>
                               void handleRejectedRecovery(
@@ -982,7 +1044,8 @@ export default function CvImprovementsStage() {
                               border: "none",
                               borderRadius: 4,
                               cursor:
-                                activeRequest !== null
+                                activeRequest !== null ||
+                                !feedbackIsValid
                                   ? "not-allowed"
                                   : "pointer",
                             }}
